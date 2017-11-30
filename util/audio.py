@@ -10,6 +10,8 @@ except ImportError:
     from python_speech_features import mfcc
     from six.moves import range
 
+    import librosa
+
     class DeprecationWarning:
         displayed = False
 
@@ -20,6 +22,23 @@ except ImportError:
             print('WARNING: libdeepspeech failed to load, resorting to deprecated code',      file=sys.stderr)
             print('         Refer to README.md for instructions on installing libdeepspeech', file=sys.stderr)
             print('------------------------------------------------------------------------', file=sys.stderr)
+
+
+        # data augmentation
+        audio_float = audio.astype(np.float32)/32768.0
+
+        # pitch (slow)
+        '''
+        pitch_amount = (np.random.rand() - 0.5)*0.5
+        audio_float = librosa.effects.pitch_shift(audio_float, fs, pitch_amount)
+        '''
+        # noise
+        noise_level_db = np.random.randint(low=-90, high=-46)
+        audio_float += np.random.randn(len(audio))*10**(noise_level_db/20.0)
+
+        audio = (audio_float*32768.0).astype(np.int16)
+
+
 
         # Get mfcc coefficients
         features = mfcc(audio, samplerate=fs, numcep=numcep)
