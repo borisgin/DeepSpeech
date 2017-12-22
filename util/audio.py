@@ -41,10 +41,18 @@ except ImportError:
 
 
         # Get mfcc coefficients
-        features = mfcc(audio, samplerate=fs, numcep=numcep)
+        #features = mfcc(audio, samplerate=fs, numcep=numcep)
+        features = mfcc(audio, samplerate=fs, winlen=0.025, winstep=0.01,
+             numcep=numcep,
+             nfilt= 2*numcep,
+             nfft=512,
+             lowfreq=0, highfreq=None,
+             preemph=0.97,
+             ceplifter= 2*numcep,  #22,
+             appendEnergy=True)
 
         # We only keep every second feature (BiRNN stride = 2)
-        features = features[::2]
+        #features = features[::2]
 
         # One stride per time step in the input
         num_strides = len(features)
