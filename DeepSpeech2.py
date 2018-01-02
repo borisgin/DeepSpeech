@@ -102,7 +102,9 @@ tf.app.flags.DEFINE_integer ('validation_step',  0,           'number of epochs 
 # Checkpointing
 
 tf.app.flags.DEFINE_string  ('checkpoint_dir',   '',          'directory in which checkpoints are stored - defaults to directory "deepspeech/checkpoints" within user\'s data home specified by the XDG Base Directory Specification')
-tf.app.flags.DEFINE_integer ('checkpoint_secs',  600,         'checkpoint saving interval in seconds')
+tf.app.flags.DEFINE_integer ('checkpoint_secs',  72000,         'checkpoint saving interval in seconds')
+tf.app.flags.DEFINE_integer ('checkpoint_steps',   1,         'checkpoint saving interval in epochs')
+
 tf.app.flags.DEFINE_integer ('max_to_keep',      5,           'number of checkpoint files to keep - default value is 5')
 
 # Exporting
@@ -124,10 +126,14 @@ tf.app.flags.DEFINE_integer ('report_count',     10,          'number of phrases
 
 tf.app.flags.DEFINE_string  ('summary_dir',      '',          'target directory for TensorBoard summaries - defaults to directory "deepspeech/summaries" within user\'s data home specified by the XDG Base Directory Specification')
 tf.app.flags.DEFINE_integer ('summary_secs',     0,           'interval in seconds for saving TensorBoard summaries - if 0, no summaries will be written')
+tf.app.flags.DEFINE_integer ('summary_steps',   10,           'interval in steps for saving TensorBoard summaries - if 0, no summaries will be written')
 
 # Geometry
 
-tf.app.flags.DEFINE_integer ('n_hidden',         2048,        'layer width to use when initialising layers')
+
+tf.app.flags.DEFINE_integer ('num_rnn_layers',         1,        'layer width to use when initialising layers')
+
+tf.app.flags.DEFINE_integer ('n_hidden',         1024,        'layer width to use when initialising layers')
 
 # Initialization
 
@@ -253,13 +259,18 @@ def initialize_globals():
 
     # Number of MFCC features
     global n_input
-    n_input = 128 #26 # TODO: Determine this programatically from the sample rate
+    n_input = 32 #128 #26 # TODO: Determine this programatically from the sample rate
 
     # The number of frames in the context
     global n_context
     n_context = 0 # 9 # TODO: Determine the optimal value using a validation data set
 
     # Number of units in hidden layers
+
+    global num_rnn_layers
+    num_rnn_layers = FLAGS.num_rnn_layers
+
+
     global n_hidden
     n_hidden = FLAGS.n_hidden
 
@@ -496,7 +507,7 @@ def DeepSpeech2(batch_x, seq_length, dropout):
     #--- conv1 -----
     n1 = n_input # n1=F
     ch1 = 32
-    kernel_size = [7,7]  #[time, freq]
+    kernel_size = [11,41]  #[time, freq]
     strides=[1,2]
     conv1=conv2D("conv1", input = batch_4d, in_channels= 1, output_channels=ch1,
            kernel_size=kernel_size, strides=strides, padding='SAME', activation_fn=tf.nn.relu,
@@ -506,7 +517,7 @@ def DeepSpeech2(batch_x, seq_length, dropout):
     #--- conv2 -----
     ch2 = 32
     n2 = n1 // strides[1]
-    kernel_size = [7,7]
+    kernel_size = [11,21]
     strides=[1,2]
     conv2 = conv2D("conv2", input=conv1, in_channels=ch1, output_channels=ch2,
                    kernel_size=kernel_size, strides=strides, padding='SAME', activation_fn=tf.nn.relu,
@@ -516,7 +527,7 @@ def DeepSpeech2(batch_x, seq_length, dropout):
     #--- conv3 ------
     n3=n2 // strides[1]
     ch3 = 96
-    kernel_size = [7,7]
+    kernel_size = [11,21]
     strides=[1,2]
 
     conv3 = conv2D("conv3", input=conv2, in_channels=ch2, output_channels=ch3,
@@ -527,14 +538,14 @@ def DeepSpeech2(batch_x, seq_length, dropout):
     #--- FC layers -----
 
     n4=n3// strides[1]
-    n_hidden = ch3 * n4
+    n5 = ch3 * n4
     # transpose to [T,B,F,C] format
     conv3 =  tf.transpose(conv3, [1, 0, 2, 3])
     # reshape to [T, B, FxC]
-    rnn_input = tf.reshape(conv3, [-1, batch_x_shape[0], n_hidden])
+    rnn_input = tf.reshape(conv3, [-1, batch_x_shape[0], n5])
 
     # ----- RNN ----------
-    num_rnn_layers = 1
+    #num_rnn_layers = 1 #3
     multirnn_cell_fw = tf.contrib.rnn.MultiRNNCell([rnn_cell()  for _ in range(num_rnn_layers)])
     multirnn_cell_bw = tf.contrib.rnn.MultiRNNCell([rnn_cell() for _ in range(num_rnn_layers)])
     outputs,output_states = tf.nn.bidirectional_dynamic_rnn(cell_fw = multirnn_cell_fw,
@@ -1349,6 +1360,11 @@ class TrainingCoordinator(object):
                     self._epochs_running.append(Epoch(self._epoch, self._num_jobs_dev, set_name='dev', report=is_display_step))
 
 
+# ADD save checkpoint
+
+
+
+
                 # Indicating that there were 'new' epoch(s) provided
                 result = True
             else:
@@ -1704,7 +1720,9 @@ def train(server=None):
                         _, current_step, batch_loss, batch_report = session.run([train_op, global_step, loss, report_params], **extra_params)
 
                         # Uncomment the next line for debugging race conditions / distributed TF
-                        log_debug('Finished batch step %d.' % current_step)
+                        log_debug('Finished batch step %d %f' %(current_step, batch_loss))
+                        if ((current_step % 10) == 0):
+                            log_info('step %d %f' % (current_step, batch_loss))
 
                         # Add batch to loss
                         total_loss += batch_loss
@@ -1754,7 +1772,7 @@ def create_inference_graph(batch_size=None, output_is_logits=False, use_new_deco
     seq_length = tf.placeholder(tf.int32, [batch_size], name='input_lengths')
 
     # Calculate the logits of the batch using BiRNN
-    logits = BiRNN(input_tensor, tf.to_int64(seq_length) if FLAGS.use_seq_length else None, no_dropout)
+    logits = DeepSpeech2(input_tensor, tf.to_int64(seq_length) if FLAGS.use_seq_length else None, no_dropout)
 
     if output_is_logits:
         return logits
