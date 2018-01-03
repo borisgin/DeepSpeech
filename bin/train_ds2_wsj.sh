@@ -4,9 +4,9 @@ export EXPERIMENT=DS2-WSJ-Cx32x32x96-R1x1024-B16
 
 #export LD_LIBRARY_PATH=/usr/local/cuda-9.0/extras/CUPTI/lib64/:/usr/local/cuda-9.0/lib64/:$LD_LIBRARY_PATH
 export COMPUTE_DATA_DIR=/data/speech/WSJ
-export CHECKPOINT_DIR=/ds2/${EXPERIMENT}/checkpoints
-export SUMMARY_DIR=/ds2/${EXPERIMENT}/summary
-export LOG_DIR=/ds2/${EXPERIMENT}
+export CHECKPOINT_DIR=/ds2/experiments/${EXPERIMENT}/checkpoints
+export SUMMARY_DIR=/ds2/experiments/${EXPERIMENT}/summary
+export LOG_DIR=/ds2/experiments/${EXPERIMENT}
 
 # Warn if we can't find the train files
 if [ ! -f "${COMPUTE_DATA_DIR}/wsj-train.csv" ]; then
