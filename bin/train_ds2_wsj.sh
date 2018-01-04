@@ -1,5 +1,5 @@
 #!/bin/sh
-set -xe
+set -x
 export EXPERIMENT=DS2-WSJ-Cx32x32x96-R1x1024-B16
 
 #export LD_LIBRARY_PATH=/usr/local/cuda-9.0/extras/CUPTI/lib64/:/usr/local/cuda-9.0/lib64/:$LD_LIBRARY_PATH
@@ -7,6 +7,10 @@ export COMPUTE_DATA_DIR=/data/speech/WSJ
 export CHECKPOINT_DIR=/ds2/experiments/${EXPERIMENT}/checkpoints
 export SUMMARY_DIR=/ds2/experiments/${EXPERIMENT}/summary
 export LOG_DIR=/ds2/experiments/${EXPERIMENT}
+
+mkdir  ${LOG_DIR}
+mkdir  ${SUMMARY_DIR}
+mkdir  ${CHECKPOINT_DIR}
 
 # Warn if we can't find the train files
 if [ ! -f "${COMPUTE_DATA_DIR}/wsj-train.csv" ]; then
@@ -21,10 +25,10 @@ python -u DeepSpeech2.py \
   --dev_files "${COMPUTE_DATA_DIR}/wsj-dev.csv" \
   --test_files "${COMPUTE_DATA_DIR}/wsj-test.csv" \
   --n_hidden 1024 \
-  --num_rnn_layers 1 \  
-  --train_batch_size 16 \
-  --dev_batch_size 16 \
-  --test_batch_size 16 \
+  --num_rnn_layers 1 \
+  --train_batch_size 64 \
+  --dev_batch_size 8 \
+  --test_batch_size 8 \
   --epoch 15 \
   --early_stop 0 \
   --learning_rate 0.0001 \
