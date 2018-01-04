@@ -18,7 +18,8 @@ default: deepspeech
 clean: bindings-clean
 	rm -f deepspeech
 
-deepspeech: client.cc
+# deepspeech: client.cc
+deepspeech: client.cc deepspeech.cc  
 	$(CXX) -o deepspeech $(CFLAGS) $(SOX_CFLAGS) client.cc $(LDFLAGS) $(SOX_LDFLAGS)
 
 bindings-clean:
