@@ -20,7 +20,7 @@ clean: bindings-clean
 
 # deepspeech: client.cc
 deepspeech: client.cc deepspeech.cc  
-	$(CXX) -o deepspeech $(CFLAGS) $(SOX_CFLAGS) client.cc $(LDFLAGS) $(SOX_LDFLAGS)
+	$(CXX) -o deepspeech $(CFLAGS) $(SOX_CFLAGS) client.cc  deepspeech.cc  $(LDFLAGS) $(SOX_LDFLAGS)
 
 bindings-clean:
 	rm -rf dist temp_build deepspeech.egg-info MANIFEST.in temp_lib
