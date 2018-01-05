@@ -862,15 +862,17 @@ def calculate_report(results_tuple):
     '''
     samples = []
     items = list(zip(*results_tuple))
-    mean_wer = 0.0
+    total_levenshtein = 0.0
+    total_label_length = 0.0
     for label, decoding, distance, loss in items:
         sample_wer = wer(label, decoding)
         sample = Sample(label, decoding, loss, distance, sample_wer)
         samples.append(sample)
-        mean_wer += sample_wer
+        total_levenshtein += levenshtein(label.split(), decoding.split())
+        total_label_length += float(len(label.split()))
 
-    # Getting the mean WER from the accumulated one
-    mean_wer = mean_wer / len(items)
+    # Getting the mean WER from the accumulated levenshteins and lengths
+    samples_wer = total_levenshtein / total_label_length
 
     # Filter out all items with WER=0
     samples = [s for s in samples if s.wer > 0]
