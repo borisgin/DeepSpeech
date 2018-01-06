@@ -886,7 +886,7 @@ def calculate_report(results_tuple):
     # Order this top FLAGS.report_count items by their WER (lowest WER on top)
     samples.sort(key=lambda s: s.wer)
 
-    return mean_wer, samples
+    return samples_wer, samples
 
 def collect_results(results_tuple, returns):
     r'''
