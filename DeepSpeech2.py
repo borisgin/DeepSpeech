@@ -1617,6 +1617,9 @@ def train(server=None):
     # Add summaries of all variables and gradients to log
     log_grads_and_vars(avg_tower_gradients)
 
+    tf.summary.scalar(name='Loss', tensor=loss)
+    tf.summary.scalar(name='mean_edit_distance', tensor=mean_edit_distance)
+
     # Op to merge all summaries for the summary hook
     merge_all_summaries_op = tf.summary.merge_all()
 
