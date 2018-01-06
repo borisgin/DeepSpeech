@@ -1,7 +1,8 @@
 #!/bin/sh
 set -xe
-export COMPUTE_DATA_DIR=/raid/DATA/SPEECH/LDC/
-export COMPUTE_KEEP_DIR=${COMPUTE_DATA_DIR}/MODELS-WSJ/
+#export CUDA_VISIBLE_DEVICES=1
+export COMPUTE_DATA_DIR=/data/speech/WSJ
+export COMPUTE_KEEP_DIR=/ds2/WSJ-41-DS1
 
 if [ ! -f DeepSpeech.py ]; then
     echo "Please make sure you run this from DeepSpeech's top level directory."
@@ -34,6 +35,10 @@ python -u DeepSpeech.py \
   --train 0 \
   --learning_rate 0.0001 \
   --checkpoint_dir "${COMPUTE_KEEP_DIR}" \
-  --wer_log_pattern "GLOBAL LOG: logwer('${COMPUTE_ID}', '%s', '%s', %f)"\
+  --wer_log_pattern "GLOBAL LOG: logwer('${COMPUTE_ID}', '%s', '%s', %f)" \
   --decoder_library_path /opt/tensorflow/bazel-bin/native_client/libctc_decoder_with_kenlm.so \
+  --lm_binary_path data/lm/wsj-lm.binary \
+  --lm_trie_path data/lm/wsj-lm.trie \
+  --word_count_weight 1.0 \
+  --valid_word_count_weight 2.5 \
   "$@"

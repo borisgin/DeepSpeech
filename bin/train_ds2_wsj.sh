@@ -42,4 +42,8 @@ python -u DeepSpeech2.py \
   --summary_dir  "${SUMMARY_DIR}" \
   --summary_secs 600 \
   --decoder_library_path /opt/tensorflow/bazel-bin/native_client/libctc_decoder_with_kenlm.so \
+  --lm_binary_path data/lm/wsj-lm.binary \
+  --lm_trie_path data/lm/wsj-lm.trie \
+  --word_count_weight 1.0 \
+  --valid_word_count_weight 2.5 \
   "$@"  2>&1 | tee ${LOG_DIR}/${EXPERIMENT}_$(date +%Y%m%d_%H%M).txt
