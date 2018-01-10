@@ -1,17 +1,8 @@
 #!/bin/sh
 set -x
-export EXPERIMENT=DS2-WSJ-Cx32x32x96-R1x1024-B16
+export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:/usr/local/cuda-9.0/extras/CUPTI/lib64/:/usr/local/cuda-9.0/lib64/:$LD_LIBRARY_PATH
 
-#export LD_LIBRARY_PATH=/usr/local/cuda-9.0/extras/CUPTI/lib64/:/usr/local/cuda-9.0/lib64/:$LD_LIBRARY_PATH
 export COMPUTE_DATA_DIR=/data/speech/WSJ
-export CHECKPOINT_DIR=/ds2/experiments/${EXPERIMENT}/checkpoints
-export SUMMARY_DIR=/ds2/experiments/${EXPERIMENT}/summary
-export LOG_DIR=/ds2/experiments/${EXPERIMENT}
-
-mkdir  ${LOG_DIR}
-mkdir  ${SUMMARY_DIR}
-mkdir  ${CHECKPOINT_DIR}
-
 # Warn if we can't find the train files
 if [ ! -f "${COMPUTE_DATA_DIR}/wsj-train.csv" ]; then
     echo "Warning: It looks like you don't have the Switchboard corpus"       \
@@ -20,19 +11,35 @@ if [ ! -f "${COMPUTE_DATA_DIR}/wsj-train.csv" ]; then
          "importer script before running this script."
 fi;
 
+export EXPERIMENT=DS2-WSJ-Cx32x32x96-R2x1024-B64
+
+export LOG_DIR=/ds2/experiments/${EXPERIMENT}
+export CHECKPOINT_DIR=/ds2/experiments/${EXPERIMENT}/checkpoints
+export SUMMARY_DIR=/ds2/experiments/${EXPERIMENT}/summary
+
+if [ ! -d "$LOG_DIR" ]; then
+  mkdir  ${LOG_DIR}
+fi
+if [ ! -d "$CHECKPOINT_DIR" ]; then
+  mkdir  ${CHECKPOINT_DIR}
+fi
+if [ ! -d "$SUMMARY_DIR" ]; then
+  mkdir  ${SUMMARY_DIR}
+fi
+
 python -u DeepSpeech2.py \
   --train_files "${COMPUTE_DATA_DIR}/wsj-train.csv" \
   --dev_files "${COMPUTE_DATA_DIR}/wsj-dev.csv" \
   --test_files "${COMPUTE_DATA_DIR}/wsj-test.csv" \
   --n_hidden 1024 \
-  --num_rnn_layers 1 \
+  --num_rnn_layers 2 \
   --train_batch_size 64 \
-  --dev_batch_size 8 \
-  --test_batch_size 8 \
-  --epoch 15 \
+  --dev_batch_size  16 \
+  --test_batch_size 16 \
+  --epoch 100 \
   --early_stop 0 \
   --learning_rate 0.0001 \
-  --display_step 1 \
+  --display_step 10 \
   --validation_step 1 \
   --dropout_rate 0.15 \
   --default_stddev 0.046875 \

@@ -61,12 +61,7 @@ tf.app.flags.DEFINE_integer ('epoch',            75,          'target epoch to t
 
 tf.app.flags.DEFINE_boolean ('use_warpctc',      False,       'wether to use GPU bound Warp-CTC')
 
-tf.app.flags.DEFINE_float   ('dropout_rate',     0.05,        'dropout rate for feedforward layers')
-tf.app.flags.DEFINE_float   ('dropout_rate2',    -1.0,        'dropout rate for layer 2 - defaults to dropout_rate')
-tf.app.flags.DEFINE_float   ('dropout_rate3',    -1.0,        'dropout rate for layer 3 - defaults to dropout_rate')
-tf.app.flags.DEFINE_float   ('dropout_rate4',    0.0,         'dropout rate for layer 4 - defaults to 0.0')
-tf.app.flags.DEFINE_float   ('dropout_rate5',    0.0,         'dropout rate for layer 5 - defaults to 0.0')
-tf.app.flags.DEFINE_float   ('dropout_rate6',    -1.0,        'dropout rate for layer 6 - defaults to dropout_rate')
+tf.app.flags.DEFINE_float   ('dropout',          1.00,        'dropout keep probability')
 
 tf.app.flags.DEFINE_float   ('relu_clip',        20.0,        'ReLU clipping value for non-recurrant layers')
 
@@ -130,9 +125,7 @@ tf.app.flags.DEFINE_integer ('summary_steps',   10,           'interval in steps
 
 # Geometry
 
-
 tf.app.flags.DEFINE_integer ('num_rnn_layers',         1,        'layer width to use when initialising layers')
-
 tf.app.flags.DEFINE_integer ('n_hidden',         1024,        'layer width to use when initialising layers')
 
 # Initialization
@@ -212,29 +205,13 @@ def initialize_globals():
     # This node's available GPU devices
     global available_devices
     available_devices = [worker_device + gpu for gpu in get_available_gpus()]
+    num_gpus=len(available_devices)
+    print("Found %d GPUs" % num_gpus)
 
     # If there is no GPU available, we fall back to CPU based operation
     if 0 == len(available_devices):
+        print("Warning: no GPU found, switch to CPU")
         available_devices = [cpu_device]
-
-    # Set default dropout rates
-    if FLAGS.dropout_rate2 < 0:
-        FLAGS.dropout_rate2 = FLAGS.dropout_rate
-    if FLAGS.dropout_rate3 < 0:
-        FLAGS.dropout_rate3 = FLAGS.dropout_rate
-    if FLAGS.dropout_rate6 < 0:
-        FLAGS.dropout_rate6 = FLAGS.dropout_rate
-
-    global dropout_rates
-    dropout_rates = [ FLAGS.dropout_rate,
-                      FLAGS.dropout_rate2,
-                      FLAGS.dropout_rate3,
-                      FLAGS.dropout_rate4,
-                      FLAGS.dropout_rate5,
-                      FLAGS.dropout_rate6 ]
-
-    global no_dropout
-    no_dropout = [ 0.0 ] * 6
 
     # Set default checkpoint dir
     if len(FLAGS.checkpoint_dir) == 0:
@@ -259,7 +236,7 @@ def initialize_globals():
 
     # Number of MFCC features
     global n_input
-    n_input = 32 #128 #26 # TODO: Determine this programatically from the sample rate
+    n_input = 64 #128 #26 # TODO: Determine this programatically from the sample rate
 
     # The number of frames in the context
     global n_context
@@ -270,9 +247,11 @@ def initialize_globals():
     global num_rnn_layers
     num_rnn_layers = FLAGS.num_rnn_layers
 
-
     global n_hidden
     n_hidden = FLAGS.n_hidden
+
+    global dropout
+    dropout = FLAGS.dropout
 
     global n_hidden_1
     n_hidden_1 = n_hidden
@@ -464,15 +443,15 @@ def rnn_cell(layer_type="lstm"):
                        if 'reuse' not in inspect.getargspec(tf.contrib.rnn.BasicLSTMCell.__init__).args else \
                        tf.contrib.rnn.BasicLSTMCell(n_cell_dim, forget_bias=1.0, state_is_tuple=True,
                                                 reuse=tf.get_variable_scope().reuse)
-        cell = tf.contrib.rnn.DropoutWrapper(cell, input_keep_prob=0.5, output_keep_prob=0.5,
+        cell = tf.contrib.rnn.DropoutWrapper(cell, input_keep_prob= dropout, output_keep_prob= dropout,
                                                      seed=FLAGS.random_seed)
     elif (layer_type=="layernorm_lstm"):
          cell = tf.contrib.rnn.LayerNormBasicLSTMCell(n_cell_dim, forget_bias=1.0,
-                                                                 dropout_keep_prob =0.5,
+                                                                 dropout_keep_prob = dropout,
                                                                  dropout_prob_seed = FLAGS.random_seed) \
                 if 'reuse' not in inspect.getargspec(tf.contrib.rnn.LayerNormBasicLSTMCell.__init__).args else \
                 tf.contrib.rnn.LayerNormBasicLSTMCell(n_cell_dim, forget_bias=1.0,
-                                                      dropout_keep_prob=0.5, dropout_prob_seed=FLAGS.random_seed,
+                                                      dropout_keep_prob=dropout, dropout_prob_seed=FLAGS.random_seed,
                                                       reuse=tf.get_variable_scope().reuse)
     elif (layer_type=="gru"):
             cell = tf.contrib.rnn.GRUCell(n_cell_dim) \
@@ -503,47 +482,58 @@ def DeepSpeech2(batch_x, seq_length, dropout):
 
     batch_4d = tf.expand_dims(batch_x, dim=-1)  # [B,T,F,C]
     # print(batch_4d.get_shape())
+    #------------------------
+    conv_channels = [32, 32, 64]
+    #--- conv1 --------------
+    kernel_size = [11, 21]  #[time, freq]
+    strides=[1,2] #[1,2]
+    ch_in = batch_4d.get_shape()[-1]
+    ch_out = conv_channels[0]
+    f_in = n_input
+    f_out = f_in // strides[1]
+    print("conv1: kernel=[%d,%d] stride=[%d,%d] ch=[%d, %d] f_out=%d" %
+          (kernel_size[0],kernel_size[1], strides[0], strides[1], ch_in, ch_out, f_out))
 
-    #--- conv1 -----
-    n1 = n_input # n1=F
-    ch1 = 32
-    kernel_size = [11,41]  #[time, freq]
-    strides=[1,2]
-    conv1=conv2D("conv1", input = batch_4d, in_channels= 1, output_channels=ch1,
+    conv1=conv2D("conv1", input = batch_4d, in_channels=ch_in, output_channels=ch_out,
            kernel_size=kernel_size, strides=strides, padding='SAME', activation_fn=tf.nn.relu,
            weights_initializer=tf.contrib.layers.xavier_initializer(uniform=False),
            bias_initializer=tf.random_normal_initializer() #stddev=FLAGS.b1_stddev)
      )
     #--- conv2 -----
-    ch2 = 32
-    n2 = n1 // strides[1]
+    ch_in  = conv_channels[0]
+    ch_out = conv_channels[1]
     kernel_size = [11,21]
-    strides=[1,2]
-    conv2 = conv2D("conv2", input=conv1, in_channels=ch1, output_channels=ch2,
+    strides=[1,2] #[1,2]
+    f_out = f_out // strides[1]
+    print("conv2: kernel=[%d,%d] stride=[%d,%d] ch=[%d,%d] f_out=%d" %
+          (kernel_size[0],kernel_size[1], strides[0], strides[1], ch_in, ch_out, f_out))
+    conv2 = conv2D("conv2", input=conv1, in_channels=ch_in, output_channels=ch_out,
                    kernel_size=kernel_size, strides=strides, padding='SAME', activation_fn=tf.nn.relu,
                    weights_initializer=tf.contrib.layers.xavier_initializer(uniform=False),
                    bias_initializer=tf.random_normal_initializer(stddev=FLAGS.b2_stddev)
     )
     #--- conv3 ------
-    n3=n2 // strides[1]
-    ch3 = 96
+    ch_in = conv_channels[1]
+    ch_out = conv_channels[2]
     kernel_size = [11,21]
-    strides=[1,2]
-
-    conv3 = conv2D("conv3", input=conv2, in_channels=ch2, output_channels=ch3,
+    strides=[1,2] #[1,2]
+    f_out = f_out // strides[1]
+    print("conv3: kernel=[%d,%d] stride=[%d,%d] ch=[%d,%d] f_out=%d" %
+          (kernel_size[0],kernel_size[1], strides[0], strides[1], ch_in, ch_out, f_out))
+    conv3 = conv2D("conv3", input=conv2, in_channels=ch_in, output_channels=ch_out,
                    kernel_size=kernel_size, strides=strides, padding='SAME', activation_fn=tf.nn.relu,
                    weights_initializer=tf.contrib.layers.xavier_initializer(uniform=False),
-                   bias_initializer=tf.random_normal_initializer(stddev=FLAGS.b2_stddev)
+                   bias_initializer=tf.random_normal_initializer(stddev=FLAGS.b3_stddev)
                    )
     #--- FC layers -----
 
-    n4=n3// strides[1]
-    n5 = ch3 * n4
     # transpose to [T,B,F,C] format
     conv3 =  tf.transpose(conv3, [1, 0, 2, 3])
+    #print(conv3.get_shape())
+    fc_in = ch_out * f_out
     # reshape to [T, B, FxC]
-    rnn_input = tf.reshape(conv3, [-1, batch_x_shape[0], n5])
-
+    rnn_input = tf.reshape(conv3, [-1, batch_x_shape[0], fc_in])
+    #print(rnn_input.get_shape())
     # ----- RNN ----------
     #num_rnn_layers = 1 #3
     multirnn_cell_fw = tf.contrib.rnn.MultiRNNCell([rnn_cell()  for _ in range(num_rnn_layers)])
@@ -555,17 +545,19 @@ def DeepSpeech2(batch_x, seq_length, dropout):
                                                  time_major=True,
                                                  sequence_length=seq_length)
    #-------------------------------------------------------------------------------
+
     # Reshape outputs from two tensors each of shape [n_steps, batch_size, n_cell_dim]
     # to a single tensor of shape [n_steps*batch_size, 2*n_cell_dim]
     outputs = tf.concat(outputs, 2)
+    #print(outputs.get_shape())
     outputs = tf.reshape(outputs, [-1, 2*n_cell_dim])
-
+    #print(outputs.get_shape())
     #--------------------------------------------------------------------------------
     # hidden layer with clipped RELU activation and dropout
     b5 = variable_on_worker_level('b5', [n_hidden_5], tf.random_normal_initializer(stddev=FLAGS.b5_stddev))
     h5 = variable_on_worker_level('h5', [(2 * n_cell_dim), n_hidden_5], tf.random_normal_initializer(stddev=FLAGS.h5_stddev))
     layer_5 = tf.minimum(tf.nn.relu(tf.add(tf.matmul(outputs, h5), b5)), FLAGS.relu_clip)
-    layer_5 = tf.nn.dropout(layer_5, (1.0 - dropout[5]))
+    layer_5 = tf.nn.dropout(layer_5, dropout)
 
     # creating the logits.
     b6 = variable_on_worker_level('b6', [n_hidden_6], tf.random_normal_initializer(stddev=FLAGS.b6_stddev))
@@ -626,7 +618,7 @@ def calculate_mean_edit_distance_and_loss(model_feeder, tower, dropout):
     if FLAGS.use_warpctc:
         total_loss = tf.contrib.warpctc.warp_ctc_loss(labels=batch_y, inputs=logits, sequence_length=batch_seq_len)
     else:
-        total_loss = tf.nn.ctc_loss(labels=batch_y, inputs=logits, sequence_length=batch_seq_len)
+        total_loss = tf.nn.ctc_loss(labels=batch_y, inputs=logits, sequence_length=batch_seq_len, ignore_longer_outputs_than_inputs = False)
 
     # Calculate the average loss across the batch
     avg_loss = tf.reduce_mean(total_loss)
@@ -738,7 +730,7 @@ def get_tower_results(model_feeder, optimizer):
                     # Calculate the avg_loss and mean_edit_distance and retrieve the decoded
                     # batch along with the original batch's labels (Y) of this tower
                     total_loss, avg_loss, distance, mean_edit_distance, decoded, labels = \
-                        calculate_mean_edit_distance_and_loss(model_feeder, i, no_dropout if optimizer is None else dropout_rates)
+                        calculate_mean_edit_distance_and_loss(model_feeder, i, dropout=1.0  if optimizer is None else dropout)
 
                     # Allow for variables to be re-used by the next tower
                     tf.get_variable_scope().reuse_variables()
@@ -1777,7 +1769,7 @@ def create_inference_graph(batch_size=None, output_is_logits=False, use_new_deco
     seq_length = tf.placeholder(tf.int32, [batch_size], name='input_lengths')
 
     # Calculate the logits of the batch using BiRNN
-    logits = DeepSpeech2(input_tensor, tf.to_int64(seq_length) if FLAGS.use_seq_length else None, no_dropout)
+    logits = DeepSpeech2(input_tensor, tf.to_int64(seq_length) if FLAGS.use_seq_length else None, dropout=-1.0)
 
     if output_is_logits:
         return logits

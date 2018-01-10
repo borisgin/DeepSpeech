@@ -22,20 +22,32 @@ audioToInputVector(const short* aBuffer, unsigned int aBufferSize,
 
   // Compute MFCC features
   float* mfcc;
+//  int n_frames = csf_mfcc(aBuffer, aBufferSize, aSampleRate,
+//                          WIN_LEN, WIN_STEP, aNCep, N_FILTERS, N_FFT,
+//                          LOWFREQ, aSampleRate/2, COEFF, CEP_LIFTER, 1, NULL,
+//                          &mfcc);
+
+  // TODO - check csf_mfcc for num of filters and cep_filters
   int n_frames = csf_mfcc(aBuffer, aBufferSize, aSampleRate,
-                          WIN_LEN, WIN_STEP, aNCep, N_FILTERS, N_FFT,
-                          LOWFREQ, aSampleRate/2, COEFF, CEP_LIFTER, 1, NULL,
+                          WIN_LEN, WIN_STEP, aNCep, aNCep*2, N_FFT,
+                          LOWFREQ, aSampleRate/2, COEFF, aNCep*2, 1, NULL,
                           &mfcc);
 
+
   // Take every other frame (BiRNN stride of 2) and add past/future context
-  int ds_input_length = (n_frames + 1) / 2;
+  int stride = 1;
+  int ds_input_length =  n_frames ;
+  //  TODO: add stride 2 for backward compatibility with DS1
+  //  stride = 2;
+  //  int ds_input_length =  (n_frames + 1) / stride;
+
   // TODO: Use MFCC of silence instead of zero
   float* ds_input = (float*)calloc(ds_input_length * frameSize, sizeof(float));
   for (int i = 0, idx = 0, mfcc_idx = 0; i < ds_input_length;
-       i++, idx += frameSize, mfcc_idx += aNCep * 2) {
+       i++, idx += frameSize, mfcc_idx += aNCep * stride) {
     // Past context
     for (int j = aNContext; j > 0; j--) {
-      int frame_index = (i - j) * 2;
+      int frame_index = (i - j) * stride;
       if (frame_index < 0) { continue; }
       int mfcc_base = frame_index * aNCep;
       int base = (aNContext - j) * aNCep;
@@ -51,7 +63,7 @@ audioToInputVector(const short* aBuffer, unsigned int aBufferSize,
 
     // Future context
     for (int j = 1; j <= aNContext; j++) {
-      int frame_index = (i + j) * 2;
+      int frame_index = (i + j) * stride;
       if (frame_index >= n_frames) { break; }
       int mfcc_base = frame_index * aNCep;
       int base = contextSize + aNCep + ((j - 1) * aNCep);
