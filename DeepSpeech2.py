@@ -236,7 +236,7 @@ def initialize_globals():
 
     # Number of MFCC features
     global n_input
-    n_input = 64 #128 #26 # TODO: Determine this programatically from the sample rate
+    n_input = 160 # 126 # TODO: Determine this programatically from the sample rate
 
     # The number of frames in the context
     global n_context
@@ -253,11 +253,6 @@ def initialize_globals():
     global dropout
     dropout = FLAGS.dropout
 
-    global n_hidden_1
-    n_hidden_1 = n_hidden
-
-    global n_hidden_2
-    n_hidden_2 = n_hidden
 
     global n_hidden_5
     n_hidden_5 = n_hidden
@@ -483,45 +478,55 @@ def DeepSpeech2(batch_x, seq_length, dropout):
     batch_4d = tf.expand_dims(batch_x, dim=-1)  # [B,T,F,C]
     # print(batch_4d.get_shape())
     #------------------------
-    conv_channels = [32, 32, 64]
+    conv_channels = [32, 64, 96]
     #--- conv1 --------------
-    kernel_size = [11, 21]  #[time, freq]
-    strides=[1,2] #[1,2]
     ch_in = batch_4d.get_shape()[-1]
     ch_out = conv_channels[0]
     f_in = n_input
-    f_out = f_in // strides[1]
+    kernel_size = [16,32] # [11, 41]  #[time, freq]
+    strides=[2,2] #[1,2]
+    seq_length = (seq_length -kernel_size[0]+strides[0]) // strides[0]
+    f_out = (f_in - kernel_size[1]+strides[1]) // strides[1]
     print("conv1: kernel=[%d,%d] stride=[%d,%d] ch=[%d, %d] f_out=%d" %
           (kernel_size[0],kernel_size[1], strides[0], strides[1], ch_in, ch_out, f_out))
 
     conv1=conv2D("conv1", input = batch_4d, in_channels=ch_in, output_channels=ch_out,
-           kernel_size=kernel_size, strides=strides, padding='SAME', activation_fn=tf.nn.relu,
+           kernel_size=kernel_size, strides=strides, padding='VALID',  #padding='SAME'
+           activation_fn=tf.nn.relu,
            weights_initializer=tf.contrib.layers.xavier_initializer(uniform=False),
            bias_initializer=tf.random_normal_initializer() #stddev=FLAGS.b1_stddev)
      )
     #--- conv2 -----
     ch_in  = conv_channels[0]
     ch_out = conv_channels[1]
-    kernel_size = [11,21]
+    kernel_size = [8,16] #[11,21]
     strides=[1,2] #[1,2]
-    f_out = f_out // strides[1]
+    seq_length = (seq_length -kernel_size[0]+ strides[0]) // strides[0]
+    f_out = (f_out - kernel_size[1]+strides[1]) // strides[1]
+   # seq_length = seq_length // strides[0]
+   # f_out = f_out // strides[1]
     print("conv2: kernel=[%d,%d] stride=[%d,%d] ch=[%d,%d] f_out=%d" %
           (kernel_size[0],kernel_size[1], strides[0], strides[1], ch_in, ch_out, f_out))
     conv2 = conv2D("conv2", input=conv1, in_channels=ch_in, output_channels=ch_out,
-                   kernel_size=kernel_size, strides=strides, padding='SAME', activation_fn=tf.nn.relu,
+                   kernel_size=kernel_size, strides=strides, padding='VALID',  #padding='SAME'
+                   activation_fn=tf.nn.relu,
                    weights_initializer=tf.contrib.layers.xavier_initializer(uniform=False),
                    bias_initializer=tf.random_normal_initializer(stddev=FLAGS.b2_stddev)
     )
     #--- conv3 ------
     ch_in = conv_channels[1]
     ch_out = conv_channels[2]
-    kernel_size = [11,21]
+    kernel_size = [8,16] #[11,21]
     strides=[1,2] #[1,2]
-    f_out = f_out // strides[1]
+    seq_length = (seq_length - kernel_size[0]+ strides[0]) // strides[0]
+    f_out = (f_out - kernel_size[1]+ strides[1] ) // strides[1]
+#    seq_length = seq_length // strides[0]
+#    f_out = f_out // strides[1]
     print("conv3: kernel=[%d,%d] stride=[%d,%d] ch=[%d,%d] f_out=%d" %
           (kernel_size[0],kernel_size[1], strides[0], strides[1], ch_in, ch_out, f_out))
     conv3 = conv2D("conv3", input=conv2, in_channels=ch_in, output_channels=ch_out,
-                   kernel_size=kernel_size, strides=strides, padding='SAME', activation_fn=tf.nn.relu,
+                   kernel_size=kernel_size, strides=strides, padding='VALID',  #padding='SAME'
+                   activation_fn=tf.nn.relu,
                    weights_initializer=tf.contrib.layers.xavier_initializer(uniform=False),
                    bias_initializer=tf.random_normal_initializer(stddev=FLAGS.b3_stddev)
                    )
@@ -536,6 +541,7 @@ def DeepSpeech2(batch_x, seq_length, dropout):
     #print(rnn_input.get_shape())
     # ----- RNN ----------
     #num_rnn_layers = 1 #3
+
     multirnn_cell_fw = tf.contrib.rnn.MultiRNNCell([rnn_cell()  for _ in range(num_rnn_layers)])
     multirnn_cell_bw = tf.contrib.rnn.MultiRNNCell([rnn_cell() for _ in range(num_rnn_layers)])
     outputs,output_states = tf.nn.bidirectional_dynamic_rnn(cell_fw = multirnn_cell_fw,
@@ -544,6 +550,7 @@ def DeepSpeech2(batch_x, seq_length, dropout):
                                                  dtype=tf.float32,
                                                  time_major=True,
                                                  sequence_length=seq_length)
+    #                                             sequence_length=seq_length)
    #-------------------------------------------------------------------------------
 
     # Reshape outputs from two tensors each of shape [n_steps, batch_size, n_cell_dim]
@@ -569,7 +576,7 @@ def DeepSpeech2(batch_x, seq_length, dropout):
     layer_6 = tf.reshape(layer_6, [-1, batch_x_shape[0], n_hidden_6], name="logits")
 
     # Output shape: [n_steps, batch_size, n_hidden_6]
-    return layer_6
+    return layer_6 , seq_length
 
 if not os.path.exists(os.path.abspath(FLAGS.decoder_library_path)):
     print('ERROR: The decoder library file does not exist. Make sure you have ' \
@@ -612,7 +619,9 @@ def calculate_mean_edit_distance_and_loss(model_feeder, tower, dropout):
     batch_x, batch_seq_len, batch_y = model_feeder.next_batch(tower)
 
     # Calculate the logits of the batch using BiRNN
-    logits = DeepSpeech2(batch_x, tf.to_int64(batch_seq_len), dropout)
+ #   logits, batch_seq_len = DeepSpeech2(batch_x, tf.to_int64(batch_seq_len), dropout)
+ #   logits, batch_seq_len = DeepSpeech2(batch_x, tf.to_int32(batch_seq_len), dropout)
+    logits, batch_seq_len = DeepSpeech2(batch_x, batch_seq_len, dropout)
 
     # Compute the CTC loss using either TensorFlow's `ctc_loss` or Baidu's `warp_ctc_loss`.
     if FLAGS.use_warpctc:
