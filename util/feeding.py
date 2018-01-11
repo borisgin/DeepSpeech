@@ -82,7 +82,7 @@ class DataSet(object):
     Represents a collection of audio samples and their respective transcriptions.
     Takes a set of CSV files produced by importers in /bin.
     '''
-    def __init__(self, csvs, batch_size, skip=0, limit=0, ascending=True, next_index=lambda i: i + 1):
+    def __init__(self, csvs, batch_size, skip=0, limit=0, ascending=False, next_index=lambda i: i + 1):
         self.batch_size = batch_size
         self.next_index = next_index
         self.files = None
@@ -92,8 +92,12 @@ class DataSet(object):
                 self.files = file
             else:
                 self.files = self.files.append(file)
-        self.files = self.files.sort_values(by="wav_filesize", ascending=ascending) \
+        if ascending :
+            self.files = self.files.sort_values(by="wav_filesize", ascending=ascending) \
                          .ix[:, ["wav_filename", "transcript"]] \
+                         .values[skip:]
+        else:
+            self.files = self.files.ix[:, ["wav_filename", "transcript"]] \
                          .values[skip:]
         if limit > 0:
             self.files = self.files[:limit]

@@ -37,6 +37,8 @@ tf.app.flags.DEFINE_string  ('train_files',      '',          'comma separated l
 tf.app.flags.DEFINE_string  ('dev_files',        '',          'comma separated list of files specifying the dataset used for validation. multiple files will get merged')
 tf.app.flags.DEFINE_string  ('test_files',       '',          'comma separated list of files specifying the dataset used for testing. multiple files will get merged')
 tf.app.flags.DEFINE_boolean ('fulltrace',        False,       'if full trace debug info should be generated during training')
+tf.app.flags.DEFINE_string  ('train_sort',       False,       'sort training set by wave length')
+
 
 # Cluster configuration
 # =====================
@@ -125,7 +127,9 @@ tf.app.flags.DEFINE_integer ('summary_steps',   10,           'interval in steps
 
 # Geometry
 
-tf.app.flags.DEFINE_integer ('num_rnn_layers',         1,        'layer width to use when initialising layers')
+tf.app.flags.DEFINE_integer ('num_rnn_layers',  1,            'layer width to use when initialising layers')
+tf.app.flags.DEFINE_string  ('rnn_type',        'gru',        'rnn-cell type')
+
 tf.app.flags.DEFINE_integer ('n_hidden',         1024,        'layer width to use when initialising layers')
 
 # Initialization
@@ -432,7 +436,7 @@ def conv2D(name,
 
 #===========================================================
 
-def rnn_cell(layer_type="lstm"):
+def rnn_cell(layer_type=FLAGS.rnn_type):
     if (layer_type=="lstm"):
         cell = tf.contrib.rnn.BasicLSTMCell(n_cell_dim, forget_bias=1.0, state_is_tuple=True) \
                        if 'reuse' not in inspect.getargspec(tf.contrib.rnn.BasicLSTMCell.__init__).args else \
@@ -452,6 +456,8 @@ def rnn_cell(layer_type="lstm"):
             cell = tf.contrib.rnn.GRUCell(n_cell_dim) \
                 if 'reuse' not in inspect.getargspec(tf.contrib.rnn.GRUCell.__init__).args else \
                 tf.contrib.rnn.GRUCell(n_cell_dim, reuse=tf.get_variable_scope().reuse)
+            cell = tf.contrib.rnn.DropoutWrapper(cell, input_keep_prob=dropout, output_keep_prob=dropout,
+                                         seed=FLAGS.random_seed)
 
     return cell
 
@@ -550,7 +556,6 @@ def DeepSpeech2(batch_x, seq_length, dropout):
                                                  dtype=tf.float32,
                                                  time_major=True,
                                                  sequence_length=seq_length)
-    #                                             sequence_length=seq_length)
    #-------------------------------------------------------------------------------
 
     # Reshape outputs from two tensors each of shape [n_steps, batch_size, n_cell_dim]
@@ -1572,6 +1577,7 @@ def train(server=None):
     train_set = DataSet(FLAGS.train_files.split(','),
                         FLAGS.train_batch_size,
                         limit=FLAGS.limit_train,
+                        ascending=FLAGS.train_sort,
                         next_index=lambda i: COORD.get_next_index('train'))
 
     # Reading validation set
