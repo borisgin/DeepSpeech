@@ -126,9 +126,9 @@ tf.app.flags.DEFINE_integer ('summary_secs',     0,           'interval in secon
 tf.app.flags.DEFINE_integer ('summary_steps',   10,           'interval in steps for saving TensorBoard summaries - if 0, no summaries will be written')
 
 # Geometry
-
-tf.app.flags.DEFINE_integer ('num_cnn_layers',  2,            'layer width to use when initialising layers')
-tf.app.flags.DEFINE_integer ('num_rnn_layers',  2,            'layer width to use when initialising layers')
+tf.app.flags.DEFINE_integer ('num_mfcc',        120,            'number of mfcc coefecients')
+tf.app.flags.DEFINE_integer ('num_conv_layers',  2,            'layer width to use when initialising layers')
+tf.app.flags.DEFINE_integer ('num_rnn_layers',   2,            'layer width to use when initialising layers')
 tf.app.flags.DEFINE_string  ('rnn_type',        'gru',        'rnn-cell type')
 
 tf.app.flags.DEFINE_integer ('n_hidden',         1024,        'layer width to use when initialising layers')
@@ -159,7 +159,7 @@ tf.app.flags.DEFINE_string  ('lm_trie_path',         'data/lm/trie', 'path to th
 tf.app.flags.DEFINE_integer ('beam_width',        100,   'beam width used in the CTC decoder when building candidate transcriptions')
 tf.app.flags.DEFINE_float   ('lm_weight',         2.0,  'the alpha hyperparameter of the CTC decoder. Language Model weight.')
 tf.app.flags.DEFINE_float   ('word_count_weight', 1.00,  'the beta hyperparameter of the CTC decoder. Word insertion weight (penalty).')
-tf.app.flags.DEFINE_float   ('valid_word_count_weight', 2.00, 'valid word insertion weight. This is used to lessen the word insertion penalty when the inserted word is part of the vocabulary.')
+tf.app.flags.DEFINE_float   ('valid_word_count_weight', 2.50, 'valid word insertion weight. This is used to lessen the word insertion penalty when the inserted word is part of the vocabulary.')
 
 # Inference mode
 
@@ -241,7 +241,7 @@ def initialize_globals():
 
     # Number of MFCC features
     global n_input
-    n_input = 120 #176 for 3 rnn # 126 # TODO: Determine this programatically from the sample rate
+    n_input = FLAGS.num_mfcc #176 for 3 rnn # 126 # TODO: Determine this programatically from the sample rate
 
     # The number of frames in the context
     global n_context
@@ -249,8 +249,8 @@ def initialize_globals():
 
     # Number of units in hidden layers
 
-    global num_cnn_layers
-    num_cnn_layers = FLAGS.num_cnn_layers
+    global num_conv_layers
+    num_conv_layers = FLAGS.num_conv_layers
 
     global num_rnn_layers
     num_rnn_layers = FLAGS.num_rnn_layers
@@ -262,25 +262,15 @@ def initialize_globals():
     dropout = FLAGS.dropout_keep_prob
 
 
-    global n_hidden_5
-    n_hidden_5 = n_hidden
 
     # LSTM cell state dimension
     global n_cell_dim
     n_cell_dim = n_hidden
 
-    # The number of units in the third layer, which feeds in to the LSTM
-    global n_hidden_3
-    n_hidden_3 = 2 * n_cell_dim
-    #n_hidden_3 =  n_cell_dim  # TODO-DODO
 
     # The number of characters in the target language plus one
     global n_character
     n_character = alphabet.size() + 1 # +1 for CTC blank label
-
-    # The number of units in the sixth layer
-    global n_hidden_6
-    n_hidden_6 = n_character
 
     # Assign default values for standard deviation
     for var in ['b1', 'w1', 'b2', 'w2', 'b3', 'w3', 'a2', 'h2', 'a3', 'h3', 'b5', 'h5', 'b6', 'h6']:
@@ -492,11 +482,11 @@ def DeepSpeech2(batch_x, seq_length, dropout):
     # Convolutional layers configuration
     conv_layers = [
         {'kernel_size': [11,41], 'stride': [2,2], 'num_channels': 32},
-        {'kernel_size': [11,21], 'stride': [1,2], 'num_channels': 32},
+        {'kernel_size': [11,21], 'stride': [1,2], 'num_channels': 64},
         {'kernel_size': [11,21], 'stride': [1,2], 'num_channels': 96}
     ]
-    # Number of convolutional layers
-    N_conv = min(len(conv_layers), num_cnn_layers)
+    # Number of convolutional num_conv_layers
+    N_conv = min(len(conv_layers), num_conv_layers)
 
     ch_out = batch_4d.get_shape()[-1]
     f_out = n_input
@@ -523,10 +513,14 @@ def DeepSpeech2(batch_x, seq_length, dropout):
     #--- FC layers -----
     # transpose to [T,B,F,C] format
     conv =  tf.transpose(conv, [1, 0, 2, 3])
-    #print(conv3.get_shape())
-    fc_in = ch_out * f_out
+    print(conv.get_shape())
+
+    F = conv.get_shape().as_list()[2]
+    C = conv.get_shape().as_list()[3]
+    fc_in = F*C
     # reshape to [T, B, FxC]
-    rnn_input = tf.reshape(conv, [-1, batch_x_shape[0], fc_in])
+   #   rnn_input = tf.reshape(conv, [-1, batch_x_shape[0], fc_in])
+    rnn_input = tf.reshape(conv, [-1, batch_size, fc_in])
     #print(rnn_input.get_shape())
     # ----- RNN ----------
     #num_rnn_layers = 1 #3
@@ -549,21 +543,21 @@ def DeepSpeech2(batch_x, seq_length, dropout):
     #print(outputs.get_shape())
     #--------------------------------------------------------------------------------
     # hidden layer with clipped RELU activation and dropout
-    b5 = variable_on_worker_level('b5', [n_hidden_5], tf.random_normal_initializer(stddev=FLAGS.b5_stddev))
-    h5 = variable_on_worker_level('h5', [(2 * n_cell_dim), n_hidden_5], tf.random_normal_initializer(stddev=FLAGS.h5_stddev))
+    b5 = variable_on_worker_level('b5', [n_hidden], tf.random_normal_initializer(stddev=FLAGS.b5_stddev))
+    h5 = variable_on_worker_level('h5', [(2 * n_cell_dim), n_hidden], tf.random_normal_initializer(stddev=FLAGS.h5_stddev))
     layer_5 = tf.minimum(tf.nn.relu(tf.add(tf.matmul(outputs, h5), b5)), FLAGS.relu_clip)
     layer_5 = tf.nn.dropout(layer_5, dropout)
 
     # creating the logits.
-    b6 = variable_on_worker_level('b6', [n_hidden_6], tf.random_normal_initializer(stddev=FLAGS.b6_stddev))
-    h6 = variable_on_worker_level('h6', [n_hidden_5, n_hidden_6], tf.contrib.layers.xavier_initializer(uniform=False))
+    b6 = variable_on_worker_level('b6', [n_character], tf.random_normal_initializer(stddev=FLAGS.b6_stddev))
+    h6 = variable_on_worker_level('h6', [n_hidden, n_character], tf.contrib.layers.xavier_initializer(uniform=False))
     layer_6 = tf.add(tf.matmul(layer_5, h6), b6)
 
     # reshape to time-major  [T*B, H6] --> [T, B,H6].
 
-    layer_6 = tf.reshape(layer_6, [-1, batch_x_shape[0], n_hidden_6], name="logits")
+    layer_6 = tf.reshape(layer_6, [-1, batch_x_shape[0], n_character], name="logits")
 
-    # Output shape: [n_steps, batch_size, n_hidden_6]
+    # Output shape: [n_steps, batch_size, n_character]
     return layer_6 , seq_length
 
 if not os.path.exists(os.path.abspath(FLAGS.decoder_library_path)):
