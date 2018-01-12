@@ -1,5 +1,6 @@
 import pandas
 import tensorflow as tf
+import numpy as np
 
 from threading import Thread
 from math import ceil
@@ -82,7 +83,7 @@ class DataSet(object):
     Represents a collection of audio samples and their respective transcriptions.
     Takes a set of CSV files produced by importers in /bin.
     '''
-    def __init__(self, csvs, batch_size, skip=0, limit=0, ascending=False, next_index=lambda i: i + 1):
+    def __init__(self, csvs, batch_size, skip=0, limit=0, ascending=False, next_index=lambda i: i + 1, shuffle=True):
         self.batch_size = batch_size
         self.next_index = next_index
         self.files = None
@@ -92,7 +93,7 @@ class DataSet(object):
                 self.files = file
             else:
                 self.files = self.files.append(file)
-        if ascending :
+        if ascending:
             self.files = self.files.sort_values(by="wav_filesize", ascending=ascending) \
                          .ix[:, ["wav_filename", "transcript"]] \
                          .values[skip:]
@@ -101,6 +102,8 @@ class DataSet(object):
                          .values[skip:]
         if limit > 0:
             self.files = self.files[:limit]
+        if shuffle:
+            self.files = np.random.permutation(self.files)
         self.total_batches = int(ceil(len(self.files) / batch_size))
 
 class _DataSetLoader(object):
