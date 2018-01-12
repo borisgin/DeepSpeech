@@ -420,7 +420,7 @@ def conv2D(name,
            kernel_size=[3,3],
            strides=[1,1],
            padding='SAME',
-           activation_fn=tf.nn.relu,
+           activation_fn=lambda x: tf.minimum(tf.nn.relu(x), FLAGS.relu_clip),
            weights_initializer= tf.contrib.layers.xavier_initializer(uniform=False),
            bias_initializer=tf.zeros_initializer()
            ):
@@ -435,7 +435,7 @@ def conv2D(name,
     s = [1, strides[0], strides[1], 1]
     y = tf.nn.conv2d(input, w, s, padding)
     y = tf.nn.bias_add(y, b)
-    output = tf.minimum(tf.nn.relu(y), FLAGS.relu_clip)
+    output = activation_fn(y)
     return output
 
 #===========================================================
@@ -514,11 +514,10 @@ def DeepSpeech2(batch_x, seq_length, dropout):
 
         conv = conv2D(name, input=conv, in_channels=ch_in, output_channels=ch_out,
             kernel_size=kernel_size, strides=strides, padding='VALID',  #padding='SAME'
-            activation_fn=tf.nn.relu,
+            # activation_fn=tf.nn.relu,
             weights_initializer=tf.contrib.layers.xavier_initializer(uniform=False),
             bias_initializer=tf.random_normal_initializer() #stddev=FLAGS.b1_stddev)
         )
-        ch_in = ch_out
     
     #--- FC layers -----
     # transpose to [T,B,F,C] format
@@ -929,16 +928,16 @@ def stopwatch(start_duration=0):
 
     '''
     if start_duration == 0:
-        return datetime.datetime.utcnow()
+        return time.time()
     else:
-        return datetime.datetime.utcnow() - start_duration
+        return time.time() - start_duration
 
 def format_duration(duration):
-    '''Formats the result of an even stopwatch call as hours:minutes:seconds'''
-    duration = duration if isinstance(duration, int) else duration.seconds
+    '''Formats the result of an even stopwatch call as hours:minutes:seconds:milliseconds'''
+    # duration = duration if isinstance(duration, int) else duration.seconds
     m, s = divmod(duration, 60)
     h, m = divmod(m, 60)
-    return '%d:%02d:%02d' % (h, m, s)
+    return '%d:%02d:%.3f' % (h, m, s)
 
 
 # Execution
@@ -1673,9 +1672,10 @@ def train(server=None):
                     step = session.run(global_step, feed_dict=feed_dict)
                     COORD.start_coordination(model_feeder, step)
 
+                session_time = 0.0
+
                 # Get the first job
                 job = COORD.get_job()
-
                 while job and not session.should_stop():
                     log_debug('Computing %s...' % job)
 
@@ -1712,12 +1712,15 @@ def train(server=None):
 
                         log_debug('Starting batch...')
                         # Compute the batch
+                        batch_time = time.time()
                         _, current_step, batch_loss, batch_report = session.run([train_op, global_step, loss, report_params], **extra_params)
-
+                        batch_time = time.time() - batch_time
+                        session_time += batch_time
                         # Uncomment the next line for debugging race conditions / distributed TF
                         log_debug('Finished batch step %d %f' %(current_step, batch_loss))
                         if ((current_step % 10) == 0):
-                            log_info('timestamp: %s, step %d %f' % (format_duration(stopwatch(COORD._training_time)), current_step, batch_loss))
+                            log_info('time: %s, step: %d, loss: %f' % (format_duration(session_time), current_step, batch_loss))
+                            session_time = 0.0
 
                         # Add batch to loss
                         total_loss += batch_loss
