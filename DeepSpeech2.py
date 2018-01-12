@@ -127,6 +127,7 @@ tf.app.flags.DEFINE_integer ('summary_steps',   10,           'interval in steps
 
 # Geometry
 
+tf.app.flags.DEFINE_integer ('num_cnn_layers',  2,            'layer width to use when initialising layers')
 tf.app.flags.DEFINE_integer ('num_rnn_layers',  2,            'layer width to use when initialising layers')
 tf.app.flags.DEFINE_string  ('rnn_type',        'gru',        'rnn-cell type')
 
@@ -247,6 +248,9 @@ def initialize_globals():
     n_context = 0 # 9 # TODO: Determine the optimal value using a validation data set
 
     # Number of units in hidden layers
+
+    global num_cnn_layers
+    num_cnn_layers = FLAGS.num_cnn_layers
 
     global num_rnn_layers
     num_rnn_layers = FLAGS.num_rnn_layers
@@ -484,69 +488,45 @@ def DeepSpeech2(batch_x, seq_length, dropout):
     batch_4d = tf.expand_dims(batch_x, dim=-1)  # [B,T,F,C]
     # print(batch_4d.get_shape())
     #------------------------
-    conv_channels = [32, 32, 96]
-    #--- conv1 --------------
+    
+    # Convolutional layers configuration
+    conv_layers = [
+        {'kernel_size': [11,41], 'stride': [2,2], 'num_channels': 32},
+        {'kernel_size': [11,21], 'stride': [1,2], 'num_channels': 32},
+        {'kernel_size': [11,21], 'stride': [1,2], 'num_channels': 96}
+    ]
+    # Number of convolutional layers
+    N_conv = min(len(conv_layers), num_cnn_layers)
 
-    ch_in = batch_4d.get_shape()[-1]
-    ch_out = conv_channels[0]
-    f_in = n_input
-    kernel_size = [11, 41]  #[time, freq]
-    strides=[2,2] #[1,2]
-    seq_length = (seq_length -kernel_size[0]+strides[0]) // strides[0]
-    f_out = (f_in - kernel_size[1]+strides[1]) // strides[1]
-    print("conv1: kernel=[%d,%d] stride=[%d,%d] ch=[%d, %d] f_out=%d" %
-          (kernel_size[0],kernel_size[1], strides[0], strides[1], ch_in, ch_out, f_out))
+    ch_out = batch_4d.get_shape()[-1]
+    f_out = n_input
+    conv = batch_4d
+    for idx_conv in range(N_conv):
+        name = 'conv{}'.format(idx_conv+1)
+        ch_in = ch_out
+        ch_out = conv_layers[idx_conv]['num_channels']
+        kernel_size = conv_layers[idx_conv]['kernel_size']  #[time, freq]
+        strides = conv_layers[idx_conv]['stride']
+        seq_length = (seq_length -kernel_size[0]+strides[0]) // strides[0]
+        f_out = (f_out - kernel_size[1]+strides[1]) // strides[1]
+        print('{}: kernel={} stride={} ch=[{}, {}] f_out={}'.format(
+            name, kernel_size, strides, ch_in, ch_out, f_out))
 
-    conv1=conv2D("conv1", input = batch_4d, in_channels=ch_in, output_channels=ch_out,
-           kernel_size=kernel_size, strides=strides, padding='VALID',  #padding='SAME'
-           activation_fn=tf.nn.relu,
-           weights_initializer=tf.contrib.layers.xavier_initializer(uniform=False),
-           bias_initializer=tf.random_normal_initializer() #stddev=FLAGS.b1_stddev)
-     )
-    #--- conv2 -----
-    ch_in  = conv_channels[0]
-    ch_out = conv_channels[1]
-    kernel_size = [11,21] #[11,21]
-    strides=[1,2] #[1,2]
-    seq_length = (seq_length -kernel_size[0]+ strides[0]) // strides[0]
-    f_out = (f_out - kernel_size[1]+strides[1]) // strides[1]
-   # seq_length = seq_length // strides[0]
-   # f_out = f_out // strides[1]
-    print("conv2: kernel=[%d,%d] stride=[%d,%d] ch=[%d,%d] f_out=%d" %
-          (kernel_size[0],kernel_size[1], strides[0], strides[1], ch_in, ch_out, f_out))
-    conv2 = conv2D("conv2", input=conv1, in_channels=ch_in, output_channels=ch_out,
-                   kernel_size=kernel_size, strides=strides, padding='VALID',  #padding='SAME'
-                   activation_fn=tf.nn.relu,
-                   weights_initializer=tf.contrib.layers.xavier_initializer(uniform=False),
-                   bias_initializer=tf.random_normal_initializer(stddev=FLAGS.b2_stddev)
-    )
-    #--- conv3 ------
-    '''
-    ch_in = conv_channels[1]
-    ch_out = conv_channels[2]
-    kernel_size = [11,21] #[11,21]
-    strides=[1,2] #[1,2]
-    seq_length = (seq_length - kernel_size[0]+ strides[0]) // strides[0]
-    f_out = (f_out - kernel_size[1]+ strides[1] ) // strides[1]
-#    seq_length = seq_length // strides[0]
-#    f_out = f_out // strides[1]
-    print("conv3: kernel=[%d,%d] stride=[%d,%d] ch=[%d,%d] f_out=%d" %
-          (kernel_size[0],kernel_size[1], strides[0], strides[1], ch_in, ch_out, f_out))
-    conv3 = conv2D("conv3", input=conv2, in_channels=ch_in, output_channels=ch_out,
-                   kernel_size=kernel_size, strides=strides, padding='VALID',  #padding='SAME'
-                   activation_fn=tf.nn.relu,
-                   weights_initializer=tf.contrib.layers.xavier_initializer(uniform=False),
-                   bias_initializer=tf.random_normal_initializer(stddev=FLAGS.b3_stddev)
-                   )
-    '''
+        conv = conv2D(name, input=conv, in_channels=ch_in, output_channels=ch_out,
+            kernel_size=kernel_size, strides=strides, padding='VALID',  #padding='SAME'
+            activation_fn=tf.nn.relu,
+            weights_initializer=tf.contrib.layers.xavier_initializer(uniform=False),
+            bias_initializer=tf.random_normal_initializer() #stddev=FLAGS.b1_stddev)
+        )
+        ch_in = ch_out
+    
     #--- FC layers -----
-    conv3=conv2
     # transpose to [T,B,F,C] format
-    conv3 =  tf.transpose(conv3, [1, 0, 2, 3])
+    conv =  tf.transpose(conv, [1, 0, 2, 3])
     #print(conv3.get_shape())
     fc_in = ch_out * f_out
     # reshape to [T, B, FxC]
-    rnn_input = tf.reshape(conv3, [-1, batch_x_shape[0], fc_in])
+    rnn_input = tf.reshape(conv, [-1, batch_x_shape[0], fc_in])
     #print(rnn_input.get_shape())
     # ----- RNN ----------
     #num_rnn_layers = 1 #3
