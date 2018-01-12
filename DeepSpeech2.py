@@ -63,7 +63,7 @@ tf.app.flags.DEFINE_integer ('epoch',            75,          'target epoch to t
 
 tf.app.flags.DEFINE_boolean ('use_warpctc',      False,       'wether to use GPU bound Warp-CTC')
 
-tf.app.flags.DEFINE_float   ('dropout',          1.00,        'dropout keep probability')
+tf.app.flags.DEFINE_float   ('dropout_keep_prob',  1.00,        'dropout keep probability')
 
 tf.app.flags.DEFINE_float   ('relu_clip',        20.0,        'ReLU clipping value for non-recurrant layers')
 
@@ -72,7 +72,7 @@ tf.app.flags.DEFINE_float   ('relu_clip',        20.0,        'ReLU clipping val
 tf.app.flags.DEFINE_float   ('beta1',            0.9,         'beta 1 parameter of Adam optimizer')
 tf.app.flags.DEFINE_float   ('beta2',            0.999,       'beta 2 parameter of Adam optimizer')
 tf.app.flags.DEFINE_float   ('epsilon',          1e-8,        'epsilon parameter of Adam optimizer')
-tf.app.flags.DEFINE_float   ('learning_rate',    0.001,       'learning rate of Adam optimizer')
+tf.app.flags.DEFINE_float   ('learning_rate',    0.0001,       'learning rate of Adam optimizer')
 
 # SGD with momentum optimizer
 tf.app.flags.DEFINE_integer ('decay_steps',      4,           'number of LR decay steps')
@@ -127,7 +127,7 @@ tf.app.flags.DEFINE_integer ('summary_steps',   10,           'interval in steps
 
 # Geometry
 
-tf.app.flags.DEFINE_integer ('num_rnn_layers',  1,            'layer width to use when initialising layers')
+tf.app.flags.DEFINE_integer ('num_rnn_layers',  2,            'layer width to use when initialising layers')
 tf.app.flags.DEFINE_string  ('rnn_type',        'gru',        'rnn-cell type')
 
 tf.app.flags.DEFINE_integer ('n_hidden',         1024,        'layer width to use when initialising layers')
@@ -139,7 +139,7 @@ tf.app.flags.DEFINE_float   ('default_stddev',   0.046875,    'default standard 
 
 # Early Stopping
 
-tf.app.flags.DEFINE_boolean ('early_stop',       True,        'enable early stopping mechanism over validation dataset. Make sure that dev FLAG is enabled for this to work')
+tf.app.flags.DEFINE_boolean ('early_stop',       False,        'enable early stopping mechanism over validation dataset. Make sure that dev FLAG is enabled for this to work')
 
 # This parameter is irrespective of the time taken by single epoch to complete and checkpoint saving intervals.
 # It is possible that early stopping is triggered far after the best checkpoint is already replaced by checkpoint saving interval mechanism.
@@ -155,10 +155,10 @@ tf.app.flags.DEFINE_string  ('decoder_library_path', 'native_client/libctc_decod
 tf.app.flags.DEFINE_string  ('alphabet_config_path', 'data/alphabet.txt', 'path to the configuration file specifying the alphabet used by the network. See the comment in data/alphabet.txt for a description of the format.')
 tf.app.flags.DEFINE_string  ('lm_binary_path',       'data/lm/lm.binary', 'path to the language model binary file created with KenLM')
 tf.app.flags.DEFINE_string  ('lm_trie_path',         'data/lm/trie', 'path to the language model trie file created with native_client/generate_trie')
-tf.app.flags.DEFINE_integer ('beam_width',        1024,       'beam width used in the CTC decoder when building candidate transcriptions')
-tf.app.flags.DEFINE_float   ('lm_weight',         1.75,       'the alpha hyperparameter of the CTC decoder. Language Model weight.')
-tf.app.flags.DEFINE_float   ('word_count_weight', 1.00,      'the beta hyperparameter of the CTC decoder. Word insertion weight (penalty).')
-tf.app.flags.DEFINE_float   ('valid_word_count_weight', 1.00, 'valid word insertion weight. This is used to lessen the word insertion penalty when the inserted word is part of the vocabulary.')
+tf.app.flags.DEFINE_integer ('beam_width',        100,   'beam width used in the CTC decoder when building candidate transcriptions')
+tf.app.flags.DEFINE_float   ('lm_weight',         2.0,  'the alpha hyperparameter of the CTC decoder. Language Model weight.')
+tf.app.flags.DEFINE_float   ('word_count_weight', 1.00,  'the beta hyperparameter of the CTC decoder. Word insertion weight (penalty).')
+tf.app.flags.DEFINE_float   ('valid_word_count_weight', 2.00, 'valid word insertion weight. This is used to lessen the word insertion penalty when the inserted word is part of the vocabulary.')
 
 # Inference mode
 
@@ -240,7 +240,7 @@ def initialize_globals():
 
     # Number of MFCC features
     global n_input
-    n_input = 160 # 126 # TODO: Determine this programatically from the sample rate
+    n_input = 120 #176 for 3 rnn # 126 # TODO: Determine this programatically from the sample rate
 
     # The number of frames in the context
     global n_context
@@ -255,7 +255,7 @@ def initialize_globals():
     n_hidden = FLAGS.n_hidden
 
     global dropout
-    dropout = FLAGS.dropout
+    dropout = FLAGS.dropout_keep_prob
 
 
     global n_hidden_5
@@ -484,12 +484,13 @@ def DeepSpeech2(batch_x, seq_length, dropout):
     batch_4d = tf.expand_dims(batch_x, dim=-1)  # [B,T,F,C]
     # print(batch_4d.get_shape())
     #------------------------
-    conv_channels = [32, 64, 96]
+    conv_channels = [32, 32, 96]
     #--- conv1 --------------
+
     ch_in = batch_4d.get_shape()[-1]
     ch_out = conv_channels[0]
     f_in = n_input
-    kernel_size = [16,32] # [11, 41]  #[time, freq]
+    kernel_size = [11, 41]  #[time, freq]
     strides=[2,2] #[1,2]
     seq_length = (seq_length -kernel_size[0]+strides[0]) // strides[0]
     f_out = (f_in - kernel_size[1]+strides[1]) // strides[1]
@@ -505,7 +506,7 @@ def DeepSpeech2(batch_x, seq_length, dropout):
     #--- conv2 -----
     ch_in  = conv_channels[0]
     ch_out = conv_channels[1]
-    kernel_size = [8,16] #[11,21]
+    kernel_size = [11,21] #[11,21]
     strides=[1,2] #[1,2]
     seq_length = (seq_length -kernel_size[0]+ strides[0]) // strides[0]
     f_out = (f_out - kernel_size[1]+strides[1]) // strides[1]
@@ -520,9 +521,10 @@ def DeepSpeech2(batch_x, seq_length, dropout):
                    bias_initializer=tf.random_normal_initializer(stddev=FLAGS.b2_stddev)
     )
     #--- conv3 ------
+    '''
     ch_in = conv_channels[1]
     ch_out = conv_channels[2]
-    kernel_size = [8,16] #[11,21]
+    kernel_size = [11,21] #[11,21]
     strides=[1,2] #[1,2]
     seq_length = (seq_length - kernel_size[0]+ strides[0]) // strides[0]
     f_out = (f_out - kernel_size[1]+ strides[1] ) // strides[1]
@@ -536,8 +538,9 @@ def DeepSpeech2(batch_x, seq_length, dropout):
                    weights_initializer=tf.contrib.layers.xavier_initializer(uniform=False),
                    bias_initializer=tf.random_normal_initializer(stddev=FLAGS.b3_stddev)
                    )
+    '''
     #--- FC layers -----
-
+    conv3=conv2
     # transpose to [T,B,F,C] format
     conv3 =  tf.transpose(conv3, [1, 0, 2, 3])
     #print(conv3.get_shape())
@@ -590,7 +593,7 @@ if not os.path.exists(os.path.abspath(FLAGS.decoder_library_path)):
 
 custom_op_module = tf.load_op_library(FLAGS.decoder_library_path)
 
-def decode_with_lm(inputs, sequence_length, beam_width=100,
+def decode_with_lm(inputs, sequence_length, beam_width=128,
                    top_paths=1, merge_repeated=True):
   decoded_ixs, decoded_vals, decoded_shapes, log_probabilities = (
       custom_op_module.ctc_beam_search_decoder_with_lm(

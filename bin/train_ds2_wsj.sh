@@ -32,16 +32,16 @@ python -u DeepSpeech2.py \
   --dev_files "${COMPUTE_DATA_DIR}/wsj-dev.csv" \
   --test_files "${COMPUTE_DATA_DIR}/wsj-test.csv" \
   --n_hidden 1024 \
-  --num_rnn_layers 2 \
-  --train_batch_size 64 \
+  --num_rnn_layers 3 \
+  --train_batch_size 16 \
   --dev_batch_size  16 \
   --test_batch_size 16 \
   --epoch 100 \
   --early_stop 0 \
   --learning_rate 0.0001 \
-  --display_step 10 \
+  --display_step 0 \
   --validation_step 1 \
-  --dropout_rate 0.15 \
+  --dropout_keep_prob 1.0 \
   --default_stddev 0.046875 \
   --checkpoint_dir "${CHECKPOINT_DIR}" \
   --checkpoint_secs 18000 \
@@ -51,6 +51,7 @@ python -u DeepSpeech2.py \
   --decoder_library_path /opt/tensorflow/bazel-bin/native_client/libctc_decoder_with_kenlm.so \
   --lm_binary_path data/lm/wsj-lm.binary \
   --lm_trie_path data/lm/wsj-lm.trie \
+  --beam_width = 64 \
   --word_count_weight 1.0 \
   --valid_word_count_weight 2.5 \
   "$@"  2>&1 | tee ${LOG_DIR}/${EXPERIMENT}_$(date +%Y%m%d_%H%M).txt
