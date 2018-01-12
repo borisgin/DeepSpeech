@@ -1734,7 +1734,7 @@ def train(server=None):
                         # Uncomment the next line for debugging race conditions / distributed TF
                         log_debug('Finished batch step %d %f' %(current_step, batch_loss))
                         if ((current_step % 10) == 0):
-                            log_info('step %d %f' % (current_step, batch_loss))
+                            log_info('timestamp: %s, step %d %f' % (format_duration(stopwatch(COORD._training_time)), current_step, batch_loss))
 
                         # Add batch to loss
                         total_loss += batch_loss
