@@ -49,7 +49,7 @@ except ImportError:
              lowfreq=0, highfreq=None,
              preemph=0.97,
              ceplifter= 2*numcep,  #22,
-             appendEnergy=True)
+             appendEnergy=False)
 
         # We only keep every second feature (BiRNN stride = 2)
         #features = features[::2]

@@ -30,7 +30,7 @@ audioToInputVector(const short* aBuffer, unsigned int aBufferSize,
   // TODO - check csf_mfcc for num of filters and cep_filters
   int n_frames = csf_mfcc(aBuffer, aBufferSize, aSampleRate,
                           WIN_LEN, WIN_STEP, aNCep, aNCep*2, N_FFT,
-                          LOWFREQ, aSampleRate/2, COEFF, aNCep*2, 1, NULL,
+                          LOWFREQ, aSampleRate/2, COEFF, aNCep*2, 0, NULL,
                           &mfcc);
 
 
@@ -61,6 +61,7 @@ audioToInputVector(const short* aBuffer, unsigned int aBufferSize,
       ds_input[idx + j + contextSize] = mfcc[mfcc_idx + j];
     }
 
+    // Future context
     // Future context
     for (int j = 1; j <= aNContext; j++) {
       int frame_index = (i + j) * stride;
