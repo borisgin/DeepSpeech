@@ -11,7 +11,7 @@ if [ ! -f "${COMPUTE_DATA_DIR}/wsj-train.csv" ]; then
          "importer script before running this script."
 fi;
 
-export EXPERIMENT=DS2-WSJ-Cx32x32x96-R2x1024-B64
+export EXPERIMENT=DS2-WSJ-F120-C2x32x64-R3x1024-B16x8
 
 export LOG_DIR=/ds2/experiments/${EXPERIMENT}
 export CHECKPOINT_DIR=/ds2/experiments/${EXPERIMENT}/checkpoints
@@ -31,9 +31,10 @@ python -u DeepSpeech2.py \
   --train_files "${COMPUTE_DATA_DIR}/wsj-train.csv" \
   --dev_files "${COMPUTE_DATA_DIR}/wsj-dev.csv" \
   --test_files "${COMPUTE_DATA_DIR}/wsj-test.csv" \
-  --n_hidden 1024 \
-  --num_cnn_layers 2 \
+  --num_mfcc 120 \
+  --num_conv_layers 2 \
   --num_rnn_layers 3 \
+  --n_hidden 1024 \
   --train_batch_size 16 \
   --dev_batch_size  16 \
   --test_batch_size 16 \
@@ -53,6 +54,6 @@ python -u DeepSpeech2.py \
   --lm_binary_path data/lm/wsj-lm.binary \
   --lm_trie_path data/lm/wsj-lm.trie \
   --beam_width 64 \
-  --word_count_weight 1.0 \
+  --word_count_weight 1.5 \
   --valid_word_count_weight 2.5 \
   "$@"  2>&1 | tee ${LOG_DIR}/${EXPERIMENT}_$(date +%Y%m%d_%H%M).txt
