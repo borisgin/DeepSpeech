@@ -16,7 +16,7 @@ except ImportError:
     class DeprecationWarning:
         displayed = False
 
-    def audioToInputVector(audio, fs, numcep, numcontext):
+    def audioToInputVector(audio, fs, numcep, numcontext, input_type='mfcc'):
         if DeprecationWarning.displayed is not True:
             DeprecationWarning.displayed = True
             print('------------------------------------------------------------------------', file=sys.stderr)
@@ -38,55 +38,56 @@ except ImportError:
 
         audio = (audio_float*32768.0).astype(np.int16)
         '''
+        if input_type == 'spectrogram':
+            assert numcep % 2 == 1, "m_input shouldn't be even for spectrogram"
+            frames = framesig(sig=audio,
+                              frame_len=int(fs*0.020),
+                              frame_step=int(fs*0.010),
+                              winfunc=np.hanning)
 
-        frames = framesig(sig=audio,
-                          frame_len=int(fs*0.020),
-                          frame_step=int(fs*0.010),
-                          winfunc=np.hanning)
+            # TODO: try log(1+powspec)
+            # train_inputs = np.log1p(powspec(frames, NFFT=(numcep-1)*2))
+            train_inputs = logpowspec(frames, NFFT=(numcep-1)*2)
+        elif input_type == 'mfcc':
+            # Get mfcc coefficients
+            #features = mfcc(audio, samplerate=fs, numcep=numcep)
 
-        # TODO: try log(1+powspec)
-        # features = np.log1p(powspec(frames, NFFT=(numcep-1)*2))
-        features = logpowspec(frames, NFFT=(numcep-1)*2)
+            features = mfcc(audio, samplerate=fs, winlen=0.025, winstep=0.01,
+                 numcep=numcep,
+                 nfilt= 2*numcep,
+                 nfft=512,
+                 lowfreq=0, highfreq=None,
+                 preemph=0.97,
+                 ceplifter= 2*numcep,  #22,
+                 appendEnergy=False)
 
+            # We only keep every second feature (BiRNN stride = 2)
+            #features = features[::2]
 
-        # Get mfcc coefficients
-        #features = mfcc(audio, samplerate=fs, numcep=numcep)
-        '''
-        features = mfcc(audio, samplerate=fs, winlen=0.025, winstep=0.01,
-             numcep=numcep,
-             nfilt= 2*numcep,
-             nfft=512,
-             lowfreq=0, highfreq=None,
-             preemph=0.97,
-             ceplifter= 2*numcep,  #22,
-             appendEnergy=False)
+            # One stride per time step in the input
+            num_strides = len(features)
 
-        # We only keep every second feature (BiRNN stride = 2)
-        #features = features[::2]
+            # Add empty initial and final contexts
+            empty_context = np.zeros((numcontext, numcep), dtype=features.dtype)
+            features = np.concatenate((empty_context, features, empty_context))
 
-        # One stride per time step in the input
-        num_strides = len(features)
+            # Create a view into the array with overlapping strides of size
+            # numcontext (past) + 1 (present) + numcontext (future)
+            window_size = 2*numcontext+1
+            train_inputs = np.lib.stride_tricks.as_strided(
+                features,
+                (num_strides, window_size, numcep),
+                (features.strides[0], features.strides[0], features.strides[1]),
+                writeable=False)
 
-        # Add empty initial and final contexts
-        empty_context = np.zeros((numcontext, numcep), dtype=features.dtype)
-        features = np.concatenate((empty_context, features, empty_context))
+            # Flatten the second and third dimensions
+            train_inputs = np.reshape(train_inputs, [num_strides, -1])
+            # Copy the strided array so that we can write to it safely
+            train_inputs = np.copy(train_inputs)
+        else:
+            raise ValueError('Unknown input type: {}'.format(input_type))
 
-        # Create a view into the array with overlapping strides of size
-        # numcontext (past) + 1 (present) + numcontext (future)
-        window_size = 2*numcontext+1
-        train_inputs = np.lib.stride_tricks.as_strided(
-            features,
-            (num_strides, window_size, numcep),
-            (features.strides[0], features.strides[0], features.strides[1]),
-            writeable=False)
-
-        # Flatten the second and third dimensions
-        train_inputs = np.reshape(train_inputs, [num_strides, -1])
-        '''
         # Whiten inputs (TODO: Should we whiten?)
-        # Copy the strided array so that we can write to it safely
-        # train_inputs = np.copy(features)
-        train_inputs = features
         m = np.mean(train_inputs)
         v = np.std(train_inputs)
         train_inputs = (train_inputs - m) / v
@@ -95,7 +96,7 @@ except ImportError:
         return train_inputs
 
 
-def audiofile_to_input_vector(audio_filename, numcep, numcontext):
+def audiofile_to_input_vector(audio_filename, numcep, numcontext, input_type='mfcc'):
     r"""
     Given a WAV audio file at ``audio_filename``, calculates ``numcep`` MFCC features
     at every 0.01s time step with a window length of 0.025s. Appends ``numcontext``
@@ -105,4 +106,4 @@ def audiofile_to_input_vector(audio_filename, numcep, numcontext):
     # Load wav files
     fs, audio = wav.read(audio_filename)
 
-    return audioToInputVector(audio, fs, numcep, numcontext)
+    return audioToInputVector(audio, fs, numcep, numcontext, input_type)

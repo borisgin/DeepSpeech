@@ -31,7 +31,8 @@ python -u DeepSpeech2.py \
   --train_files "${COMPUTE_DATA_DIR}/wsj-train.csv" \
   --dev_files "${COMPUTE_DATA_DIR}/wsj-dev.csv" \
   --test_files "${COMPUTE_DATA_DIR}/wsj-test.csv" \
-  --num_mfcc 64 \
+  --num_audio_features 32 \
+  --input_type mfcc \
   --num_conv_layers 3 \
   --num_rnn_layers 1 \
   --rnn_cell_dim 1024 \

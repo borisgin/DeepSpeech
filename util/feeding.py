@@ -25,7 +25,8 @@ class ModelFeeder(object):
                  numcontext,
                  alphabet,
                  tower_feeder_count=-1,
-                 threads_per_queue=2):
+                 threads_per_queue=2,
+                 input_type='mfcc'):
 
         self.train = train_set
         self.dev = dev_set
@@ -33,6 +34,7 @@ class ModelFeeder(object):
         self.sets = [train_set, dev_set, test_set]
         self.numcep = numcep
         self.numcontext = numcontext
+        self.input_type = input_type
         self.tower_feeder_count = max(len(get_available_gpus()), 1) if tower_feeder_count < 0 else tower_feeder_count
         self.threads_per_queue = threads_per_queue
 
@@ -150,7 +152,8 @@ class _DataSetLoader(object):
         while not coord.should_stop():
             index = self._data_set.next_index(index) % file_count
             wav_file, transcript = self._data_set.files[index]
-            source = audiofile_to_input_vector(wav_file, self._model_feeder.numcep, self._model_feeder.numcontext)
+            source = audiofile_to_input_vector(wav_file, self._model_feeder.numcep, self._model_feeder.numcontext,
+                                               self._model_feeder.input_type)
             source_len = len(source)
             target = text_to_char_array(transcript, self._alphabet)
             target_len = len(target)

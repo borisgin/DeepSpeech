@@ -125,7 +125,9 @@ tf.app.flags.DEFINE_integer ('summary_secs',     None,        'interval in secon
 tf.app.flags.DEFINE_integer ('summary_steps',    None,        'interval in steps for saving TensorBoard summaries - if 0, no summaries will be written')
 
 # Geometry
-tf.app.flags.DEFINE_integer ('num_mfcc',        120,            'number of mfcc coefecients')
+tf.app.flags.DEFINE_string  ('input_type',      'mfcc',       'input features type: mfcc or spectrogram')
+tf.app.flags.DEFINE_integer ('num_audio_features',        32,          'number of mfcc coefficients or spectrogram frequency bins')
+
 
 # TODO: input type: mfcc or spectrogram
 
@@ -242,9 +244,13 @@ def initialize_globals():
     # For an explanation of the meaning of the geometric constants, please refer to
     # doc/Geometry.md
 
-    # Number of MFCC features
+    # 'mfcc' or 'spectrogram'
+    global input_type
+    input_type = FLAGS.input_type
+
+    # Number of MFCC features or spectrogram frequency bins
     global n_input
-    n_input = FLAGS.num_mfcc #176 for 3 rnn # 126 # TODO: Determine this programatically from the sample rate
+    n_input = FLAGS.num_audio_features #176 for 3 rnn # 126 # TODO: Determine this programatically from the sample rate
 
     # The number of frames in the context
     global n_context
@@ -1613,7 +1619,8 @@ def train(server=None):
                                n_input,
                                n_context,
                                alphabet,
-                               tower_feeder_count=len(available_devices))
+                               tower_feeder_count=len(available_devices),
+                               input_type=input_type)
 
     if (FLAGS.decay_steps > 0):
         lr = tf.train.exponential_decay(learning_rate = FLAGS.learning_rate,
@@ -1916,7 +1923,7 @@ def do_single_file_inference(input_file_path):
         checkpoint_path = checkpoint.model_checkpoint_path
         saver.restore(session, checkpoint_path)
 
-        mfcc = audiofile_to_input_vector(input_file_path, n_input, n_context)
+        mfcc = audiofile_to_input_vector(input_file_path, n_input, n_context, input_type)
 
         output = session.run(outputs['outputs'], feed_dict = {
             inputs['input']: [mfcc],
