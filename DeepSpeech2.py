@@ -68,15 +68,15 @@ tf.app.flags.DEFINE_float   ('dropout_keep_prob',  1.00,        'dropout keep pr
 tf.app.flags.DEFINE_float   ('relu_clip',        20.0,        'ReLU clipping value for non-recurrant layers')
 
 # Adam optimizer (http://arxiv.org/abs/1412.6980) parameters
-
+tf.app.flags.DEFINE_string  ('optimizer',        'adam',      'optimizer type: adam, momentum')
 tf.app.flags.DEFINE_float   ('beta1',            0.9,         'beta 1 parameter of Adam optimizer')
 tf.app.flags.DEFINE_float   ('beta2',            0.999,       'beta 2 parameter of Adam optimizer')
 tf.app.flags.DEFINE_float   ('epsilon',          1e-8,        'epsilon parameter of Adam optimizer')
 tf.app.flags.DEFINE_float   ('learning_rate',    0.0001,       'learning rate of Adam optimizer')
 
 # SGD with momentum optimizer
-tf.app.flags.DEFINE_integer ('decay_steps',      4,           'number of LR decay steps')
-tf.app.flags.DEFINE_float   ('learning_rate_decay_factor', 0.2, 'learning_rate_decay_factor')
+tf.app.flags.DEFINE_integer ('decay_steps',      0,           'number of LR decay steps')
+tf.app.flags.DEFINE_float   ('decay_rate',       0.1,         'decay_rate')
 tf.app.flags.DEFINE_float   ('momentum',         0.9,         'momentum for SGD with momentum')
 
 # Batch sizes
@@ -101,7 +101,6 @@ tf.app.flags.DEFINE_integer ('validation_step',  0,           'number of epochs 
 tf.app.flags.DEFINE_string  ('checkpoint_dir',   '',          'directory in which checkpoints are stored - defaults to directory "deepspeech/checkpoints" within user\'s data home specified by the XDG Base Directory Specification')
 tf.app.flags.DEFINE_integer ('checkpoint_secs',  72000,         'checkpoint saving interval in seconds')
 tf.app.flags.DEFINE_integer ('checkpoint_steps',   1,         'checkpoint saving interval in epochs')
-
 tf.app.flags.DEFINE_integer ('max_to_keep',      5,           'number of checkpoint files to keep - default value is 5')
 
 # Exporting
@@ -122,21 +121,25 @@ tf.app.flags.DEFINE_boolean ('log_placement',    False,       'wether to log dev
 tf.app.flags.DEFINE_integer ('report_count',     10,          'number of phrases with lowest WER (best matching) to print out during a WER report')
 
 tf.app.flags.DEFINE_string  ('summary_dir',      '',          'target directory for TensorBoard summaries - defaults to directory "deepspeech/summaries" within user\'s data home specified by the XDG Base Directory Specification')
-tf.app.flags.DEFINE_integer ('summary_secs',     0,           'interval in seconds for saving TensorBoard summaries - if 0, no summaries will be written')
-tf.app.flags.DEFINE_integer ('summary_steps',   10,           'interval in steps for saving TensorBoard summaries - if 0, no summaries will be written')
+tf.app.flags.DEFINE_integer ('summary_secs',     None,        'interval in seconds for saving TensorBoard summaries - if 0, no summaries will be written')
+tf.app.flags.DEFINE_integer ('summary_steps',    None,        'interval in steps for saving TensorBoard summaries - if 0, no summaries will be written')
 
 # Geometry
 tf.app.flags.DEFINE_integer ('num_mfcc',        120,            'number of mfcc coefecients')
+
+# TODO: input type: mfcc or spectrogram
+
 tf.app.flags.DEFINE_integer ('num_conv_layers',  2,            'layer width to use when initialising layers')
 tf.app.flags.DEFINE_integer ('num_rnn_layers',   2,            'layer width to use when initialising layers')
-tf.app.flags.DEFINE_string  ('rnn_type',        'gru',        'rnn-cell type')
+tf.app.flags.DEFINE_string  ('rnn_type',        'gru',         'rnn-cell type')
+tf.app.flags.DEFINE_string  ('rnn_cell_dim',     1024,         'rnn-cell dim')
 
 tf.app.flags.DEFINE_integer ('n_hidden',         1024,        'layer width to use when initialising layers')
 
 # Initialization
 
-tf.app.flags.DEFINE_integer ('random_seed',      4567,        'default random seed that is used to initialize variables')
-tf.app.flags.DEFINE_float   ('default_stddev',   0.046875,    'default standard deviation to use when initialising weights and biases')
+tf.app.flags.DEFINE_integer ('random_seed',      1,        'default random seed that is used to initialize variables')
+tf.app.flags.DEFINE_float   ('default_stddev',   0.0001,    'default standard deviation to use when initialising weights and biases')
 
 # Early Stopping
 
@@ -165,8 +168,8 @@ tf.app.flags.DEFINE_float   ('valid_word_count_weight', 2.50, 'valid word insert
 
 tf.app.flags.DEFINE_string  ('one_shot_infer',       '',       'one-shot inference mode: specify a wav file and the script will load the checkpoint and perform inference on it. Disables training, testing and exporting.')
 
-for var in ['b1', 'w1', 'b2','w2', 'b3', 'w3', 'a2','h2', 'a3', 'h3', 'b5', 'h5', 'b6', 'h6']:
-    tf.app.flags.DEFINE_float('%s_stddev' % var, None, 'standard deviation to use when initialising %s' % var)
+#for var in ['b1', 'w1', 'b2','w2', 'b3', 'w3', 'a2','h2', 'a3', 'h3', 'b5', 'h5', 'b6', 'h6']:
+#    tf.app.flags.DEFINE_float('%s_stddev' % var, None, 'standard deviation to use when initialising %s' % var)
 
 FLAGS = tf.app.flags.FLAGS
 
@@ -264,8 +267,8 @@ def initialize_globals():
 
 
     # LSTM cell state dimension
-    global n_cell_dim
-    n_cell_dim = n_hidden
+    # global n_cell_dim
+    # n_cell_dim = n_hidden
 
 
     # The number of characters in the target language plus one
@@ -273,10 +276,10 @@ def initialize_globals():
     n_character = alphabet.size() + 1 # +1 for CTC blank label
 
     # Assign default values for standard deviation
-    for var in ['b1', 'w1', 'b2', 'w2', 'b3', 'w3', 'a2', 'h2', 'a3', 'h3', 'b5', 'h5', 'b6', 'h6']:
-        val = getattr(FLAGS, '%s_stddev' % var)
-        if val is None:
-            setattr(FLAGS, '%s_stddev' % var, FLAGS.default_stddev)
+    #    for var in ['b1', 'w1', 'b2', 'w2', 'b3', 'w3', 'a2', 'h2', 'a3', 'h3', 'b5', 'h5', 'b6', 'h6']:
+    #    val = getattr(FLAGS, '%s_stddev' % var)
+    #    if val is None:
+    #        setattr(FLAGS, '%s_stddev' % var, FLAGS.default_stddev)
 
     # Queues that are used to gracefully stop parameter servers.
     # Each queue stands for one ps. A finishing worker sends a token to each queue befor joining/quitting.
@@ -430,26 +433,26 @@ def conv2D(name,
 
 #===========================================================
 
-def rnn_cell(layer_type=FLAGS.rnn_type):
+def rnn_cell(rnn_cell_dim = 1024, layer_type="gru"):
     if (layer_type=="lstm"):
-        cell = tf.contrib.rnn.BasicLSTMCell(n_cell_dim, forget_bias=1.0, state_is_tuple=True) \
+        cell = tf.contrib.rnn.BasicLSTMCell(rnn_cell_dim, forget_bias=1.0, state_is_tuple=True) \
                        if 'reuse' not in inspect.getargspec(tf.contrib.rnn.BasicLSTMCell.__init__).args else \
-                       tf.contrib.rnn.BasicLSTMCell(n_cell_dim, forget_bias=1.0, state_is_tuple=True,
+                       tf.contrib.rnn.BasicLSTMCell(rnn_cell_dim, forget_bias=1.0, state_is_tuple=True,
                                                 reuse=tf.get_variable_scope().reuse)
         cell = tf.contrib.rnn.DropoutWrapper(cell, input_keep_prob= dropout, output_keep_prob= dropout,
                                                      seed=FLAGS.random_seed)
     elif (layer_type=="layernorm_lstm"):
-         cell = tf.contrib.rnn.LayerNormBasicLSTMCell(n_cell_dim, forget_bias=1.0,
+         cell = tf.contrib.rnn.LayerNormBasicLSTMCell(rnn_cell_dim, forget_bias=1.0,
                                                                  dropout_keep_prob = dropout,
                                                                  dropout_prob_seed = FLAGS.random_seed) \
                 if 'reuse' not in inspect.getargspec(tf.contrib.rnn.LayerNormBasicLSTMCell.__init__).args else \
-                tf.contrib.rnn.LayerNormBasicLSTMCell(n_cell_dim, forget_bias=1.0,
+                tf.contrib.rnn.LayerNormBasicLSTMCell(rnn_cell_dim, forget_bias=1.0,
                                                       dropout_keep_prob=dropout, dropout_prob_seed=FLAGS.random_seed,
                                                       reuse=tf.get_variable_scope().reuse)
     elif (layer_type=="gru"):
-            cell = tf.contrib.rnn.GRUCell(n_cell_dim) \
+            cell = tf.contrib.rnn.GRUCell(rnn_cell_dim) \
                 if 'reuse' not in inspect.getargspec(tf.contrib.rnn.GRUCell.__init__).args else \
-                tf.contrib.rnn.GRUCell(n_cell_dim, reuse=tf.get_variable_scope().reuse)
+                tf.contrib.rnn.GRUCell(rnn_cell_dim, reuse=tf.get_variable_scope().reuse)
             cell = tf.contrib.rnn.DropoutWrapper(cell, input_keep_prob=dropout, output_keep_prob=dropout,
                                          seed=FLAGS.random_seed)
 
@@ -478,12 +481,25 @@ def DeepSpeech2(batch_x, seq_length, dropout):
     batch_4d = tf.expand_dims(batch_x, dim=-1)  # [B,T,F,C]
     # print(batch_4d.get_shape())
     #------------------------
-    
+    '''
+    {'kernel_size': [3, 3], 'stride': [1, 1], 'num_channels': 32, 'padding': 'SAME'},
+    {'kernel_size': [3, 3], 'stride': [1, 1], 'num_channels': 32, 'padding': 'SAME'},
+    {'kernel_size': [3, 3], 'stride': [2, 2], 'num_channels': 32, 'padding': 'SAME'},
+
+    {'kernel_size': [3, 3], 'stride': [1, 1], 'num_channels': 64, 'padding': 'SAME'},
+    {'kernel_size': [3, 3], 'stride': [1, 1], 'num_channels': 64, 'padding': 'SAME'},
+    {'kernel_size': [3, 3], 'stride': [1, 2], 'num_channels': 64, 'padding': 'SAME'},
+
+    {'kernel_size': [3, 3], 'stride': [1, 1], 'num_channels': 128, 'padding': 'SAME'},
+    {'kernel_size': [3, 3], 'stride': [1, 1], 'num_channels': 128, 'padding': 'SAME'},
+    {'kernel_size': [3, 3], 'stride': [1, 2], 'num_channels': 128, 'padding': 'SAME'}
+    '''
+
     # Convolutional layers configuration
     conv_layers = [
-        {'kernel_size': [11,41], 'stride': [2,2], 'num_channels': 32},
-        {'kernel_size': [11,21], 'stride': [1,2], 'num_channels': 64},
-        {'kernel_size': [11,21], 'stride': [1,2], 'num_channels': 96}
+        {'kernel_size': [11,41], 'stride': [2,2], 'num_channels': 32, 'padding': 'SAME' },
+        {'kernel_size': [11,21], 'stride': [1,2], 'num_channels': 64, 'padding': 'SAME' },
+        {'kernel_size': [11,21], 'stride': [1,2], 'num_channels': 96, 'padding': 'SAME' }
     ]
     # Number of convolutional num_conv_layers
     N_conv = min(len(conv_layers), num_conv_layers)
@@ -497,16 +513,25 @@ def DeepSpeech2(batch_x, seq_length, dropout):
         ch_out = conv_layers[idx_conv]['num_channels']
         kernel_size = conv_layers[idx_conv]['kernel_size']  #[time, freq]
         strides = conv_layers[idx_conv]['stride']
-        seq_length = (seq_length -kernel_size[0]+strides[0]) // strides[0]
-        f_out = (f_out - kernel_size[1]+strides[1]) // strides[1]
+
+        if conv_layers[idx_conv]['padding']== "VALID":
+            seq_length = (seq_length - kernel_size[0] + strides[0]) // strides[0]
+            f_out = (f_out - kernel_size[1]+strides[1]) // strides[1]
+        else:
+            seq_length = seq_length // strides[0]
+            f_out = f_out // strides[1]
+
         print('{}: kernel={} stride={} ch=[{}, {}] f_out={}'.format(
             name, kernel_size, strides, ch_in, ch_out, f_out))
 
         conv = conv2D(name, input=conv, in_channels=ch_in, output_channels=ch_out,
-            kernel_size=kernel_size, strides=strides, padding='VALID',  #padding='SAME'
+            kernel_size=kernel_size, strides=strides,
+            padding=conv_layers[idx_conv]['padding'],
             # activation_fn=tf.nn.relu,
             weights_initializer=tf.contrib.layers.xavier_initializer(uniform=False),
-            bias_initializer=tf.random_normal_initializer() #stddev=FLAGS.b1_stddev)
+            # weights_initializer=tf.contrib.layers.variance_scaling_initializer(),
+            # bias_initializer=tf.random_normal_initializer(stddev=0.00001)
+            bias_initializer = tf.constant_initializer(0.000001)
         )
     
     #--- FC layers -----
@@ -523,9 +548,11 @@ def DeepSpeech2(batch_x, seq_length, dropout):
     #print(rnn_input.get_shape())
     # ----- RNN ----------
     #num_rnn_layers = 1 #3
-
-    multirnn_cell_fw = tf.contrib.rnn.MultiRNNCell([rnn_cell()  for _ in range(num_rnn_layers)])
-    multirnn_cell_bw = tf.contrib.rnn.MultiRNNCell([rnn_cell() for _ in range(num_rnn_layers)])
+    rnn_cell_dim = int(FLAGS.rnn_cell_dim)
+    multirnn_cell_fw = tf.contrib.rnn.MultiRNNCell(
+        [rnn_cell(rnn_cell_dim=rnn_cell_dim, layer_type=FLAGS.rnn_type) for _ in range(num_rnn_layers)])
+    multirnn_cell_bw = tf.contrib.rnn.MultiRNNCell(
+        [rnn_cell(rnn_cell_dim=rnn_cell_dim, layer_type=FLAGS.rnn_type) for _ in range(num_rnn_layers)])
     outputs,output_states = tf.nn.bidirectional_dynamic_rnn(cell_fw = multirnn_cell_fw,
                                                  cell_bw = multirnn_cell_bw,
                                                  inputs=rnn_input,
@@ -538,18 +565,21 @@ def DeepSpeech2(batch_x, seq_length, dropout):
     # to a single tensor of shape [n_steps*batch_size, 2*n_cell_dim]
     outputs = tf.concat(outputs, 2)
     #print(outputs.get_shape())
-    outputs = tf.reshape(outputs, [-1, 2*n_cell_dim])
+    outputs = tf.reshape(outputs, [-1, 2*rnn_cell_dim])
     #print(outputs.get_shape())
     #--------------------------------------------------------------------------------
     # hidden layer with clipped RELU activation and dropout
-    b5 = variable_on_worker_level('b5', [n_hidden], tf.random_normal_initializer(stddev=FLAGS.b5_stddev))
-    h5 = variable_on_worker_level('h5', [(2 * n_cell_dim), n_hidden], tf.random_normal_initializer(stddev=FLAGS.h5_stddev))
+
+    h5 = variable_on_worker_level('h5', [(2 * rnn_cell_dim), n_hidden], tf.contrib.layers.xavier_initializer(uniform=True))
+    b5 = variable_on_worker_level('b5', [n_hidden], tf.constant_initializer(0.))
+#    b5 = variable_on_worker_level('b5', [n_hidden], tf.random_normal_initializer(stddev=0.00001))
     layer_5 = tf.minimum(tf.nn.relu(tf.add(tf.matmul(outputs, h5), b5)), FLAGS.relu_clip)
     layer_5 = tf.nn.dropout(layer_5, dropout)
 
     # creating the logits.
-    b6 = variable_on_worker_level('b6', [n_character], tf.random_normal_initializer(stddev=FLAGS.b6_stddev))
-    h6 = variable_on_worker_level('h6', [n_hidden, n_character], tf.contrib.layers.xavier_initializer(uniform=False))
+    h6 = variable_on_worker_level('h6', [n_hidden, n_character], tf.contrib.layers.xavier_initializer(uniform=True))
+    b6 = variable_on_worker_level('b6', [n_character], tf.constant_initializer(0.))
+ #   b6 = variable_on_worker_level('b6', [n_character], tf.random_normal_initializer(stddev=0.00001))
     layer_6 = tf.add(tf.matmul(layer_5, h6), b6)
 
     # reshape to time-major  [T*B, H6] --> [T, B,H6].
@@ -641,10 +671,12 @@ def calculate_mean_edit_distance_and_loss(model_feeder, tower, dropout):
 # (www.cs.toronto.edu/~fritz/absps/momentum.pdf) was used,
 # we will use the Adam method for optimization (http://arxiv.org/abs/1412.6980),
 # because, generally, it requires less fine-tuning.
-def create_optimizer(lr=FLAGS.learning_rate):
-    optimizer = tf.train.AdamOptimizer(learning_rate=lr,
+def create_optimizer(optimizer='adam' , lr=FLAGS.learning_rate):
+    if (optimizer == 'adam'):
+        optimizer = tf.train.AdamOptimizer(learning_rate=lr,
                                        beta1=FLAGS.beta1, beta2=FLAGS.beta2,  epsilon=FLAGS.epsilon)
-#    optimizer = tf.train.MomentumOptimizer(learning_rate=lr,  momentum = 0.9)
+    else:
+        optimizer = tf.train.MomentumOptimizer(learning_rate=lr,  momentum = FLAGS.momentum)
     return optimizer
 
 
@@ -816,6 +848,12 @@ def log_variable(variable, gradient=None):
         else:
             grad_values = gradient
         if grad_values is not None:
+            mean = tf.reduce_mean(grad_values)
+            tf.summary.scalar(name='%s/gradients/mean' % name, tensor=mean)
+            tf.summary.scalar(name='%s/gradients/sttdev' % name, tensor=tf.sqrt(tf.reduce_mean(tf.square(grad_values - mean))))
+            tf.summary.scalar(name='%s/gradients/max' % name, tensor=tf.reduce_max(grad_values))
+            tf.summary.scalar(name='%s/gradients/min' % name, tensor=tf.reduce_min(grad_values))
+
             tf.summary.histogram(name='%s/gradients' % name, values=grad_values)
 
 
@@ -1577,13 +1615,17 @@ def train(server=None):
                                alphabet,
                                tower_feeder_count=len(available_devices))
 
-    lr = FLAGS.learning_rate
+    if (FLAGS.decay_steps > 0):
+        lr = tf.train.exponential_decay(learning_rate = FLAGS.learning_rate,
+                                             global_step   = global_step,
+                                             decay_steps   = FLAGS.decay_steps,
+                                             decay_rate    = FLAGS.decay_rate,
+                                             staircase = True)
+    else:
+        lr = tf.convert_to_tensor(FLAGS.learning_rate)
 
-    #decay_steps = int(FLAGS.decay_steps)
-    #lr = tf.train.exponential_decay(FLAGS.learning_rate, global_step, decay_steps,
-    #                                FLAGS.learning_rate_decay_factor, staircase=True)
     # Create the optimizer
-    optimizer = create_optimizer(lr)
+    optimizer = create_optimizer(optimizer = FLAGS.optimizer,lr=lr)
 
     # Synchronous distributed training is facilitated by a special proxy-optimizer
     if not server is None:
@@ -1640,8 +1682,9 @@ def train(server=None):
         hooks.append(optimizer.make_session_run_hook(is_chief))
 
     # Hook to save TensorBoard summaries
-    if FLAGS.summary_secs > 0:
-        hooks.append(tf.train.SummarySaverHook(save_secs=FLAGS.summary_secs, output_dir=FLAGS.summary_dir, summary_op=merge_all_summaries_op))
+    if (FLAGS.summary_secs is not None) or (FLAGS.summary_steps is not None):
+        hooks.append(tf.train.SummarySaverHook(save_secs=FLAGS.summary_secs, save_steps=FLAGS.summary_steps,
+                                           output_dir=FLAGS.summary_dir, summary_op=merge_all_summaries_op))
 
     # Hook wih number of checkpoint files to save in checkpoint_dir
     if FLAGS.train and FLAGS.max_to_keep > 0:
@@ -1707,13 +1750,17 @@ def train(server=None):
                         log_debug('Starting batch...')
                         # Compute the batch
                         batch_time = time.time()
-                        _, current_step, batch_loss, batch_report = session.run([train_op, global_step, loss, report_params], **extra_params)
+#                        _, current_step, batch_loss, batch_report = session.run([train_op, global_step, loss, report_params], **extra_params)
+                        _, current_step, batch_loss, learn_rate, batch_report = session.run([train_op, global_step, loss, lr, report_params], **extra_params)
+
                         batch_time = time.time() - batch_time
                         session_time += batch_time
                         # Uncomment the next line for debugging race conditions / distributed TF
                         log_debug('Finished batch step %d %f' %(current_step, batch_loss))
-                        if ((current_step % 10) == 0):
-                            log_info('time: %s, step: %d, loss: %f' % (format_duration(session_time), current_step, batch_loss))
+                        if ((current_step % 1) == 0):
+                            log_info('time: %s, step: %d, loss: %f lr: %f' % (format_duration(session_time), current_step,
+                                                                              batch_loss, learn_rate)
+                                     )
                             session_time = 0.0
 
                         # Add batch to loss
