@@ -4,10 +4,11 @@ import scipy.io.wavfile as wav
 import sys
 
 try:
-    from deepspeech.utils import audioToInputVector
+    from deepspeech.utils import audioToInputVector_DO_NOT_IMPORT
 except ImportError:
     import numpy as np
     from python_speech_features import mfcc
+    from python_speech_features.sigproc import framesig, logpowspec, powspec
     from six.moves import range
 
     import librosa
@@ -23,25 +24,34 @@ except ImportError:
             print('         Refer to README.md for instructions on installing libdeepspeech', file=sys.stderr)
             print('------------------------------------------------------------------------', file=sys.stderr)
 
-
+        '''
         # data augmentation
         audio_float = audio.astype(np.float32)/32768.0
 
         # pitch (slow)
-        '''
-        pitch_amount = (np.random.rand() - 0.5)*0.5
-        audio_float = librosa.effects.pitch_shift(audio_float, fs, pitch_amount)
-        '''
+        # pitch_amount = (np.random.rand() - 0.5)*0.5
+        # audio_float = librosa.effects.pitch_shift(audio_float, fs, pitch_amount)
+
         # noise
         noise_level_db = np.random.randint(low=-90, high=-46)
         audio_float += np.random.randn(len(audio))*10**(noise_level_db/20.0)
 
         audio = (audio_float*32768.0).astype(np.int16)
+        '''
 
+        frames = framesig(sig=audio,
+                          frame_len=int(fs*0.020),
+                          frame_step=int(fs*0.010),
+                          winfunc=np.hanning)
+
+        # TODO: try log(1+powspec)
+        # features = np.log1p(powspec(frames, NFFT=(numcep-1)*2))
+        features = logpowspec(frames, NFFT=(numcep-1)*2)
 
 
         # Get mfcc coefficients
         #features = mfcc(audio, samplerate=fs, numcep=numcep)
+        '''
         features = mfcc(audio, samplerate=fs, winlen=0.025, winstep=0.01,
              numcep=numcep,
              nfilt= 2*numcep,
@@ -49,7 +59,7 @@ except ImportError:
              lowfreq=0, highfreq=None,
              preemph=0.97,
              ceplifter= 2*numcep,  #22,
-             appendEnergy=True)
+             appendEnergy=False)
 
         # We only keep every second feature (BiRNN stride = 2)
         #features = features[::2]
@@ -72,11 +82,14 @@ except ImportError:
 
         # Flatten the second and third dimensions
         train_inputs = np.reshape(train_inputs, [num_strides, -1])
-
+        '''
         # Whiten inputs (TODO: Should we whiten?)
         # Copy the strided array so that we can write to it safely
-        train_inputs = np.copy(train_inputs)
-        train_inputs = (train_inputs - np.mean(train_inputs))/np.std(train_inputs)
+        # train_inputs = np.copy(features)
+        train_inputs = features
+        m = np.mean(train_inputs)
+        v = np.std(train_inputs)
+        train_inputs = (train_inputs - m) / v
 
         # Return results
         return train_inputs
