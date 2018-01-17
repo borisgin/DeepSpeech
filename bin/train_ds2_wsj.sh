@@ -11,7 +11,7 @@ if [ ! -f "${COMPUTE_DATA_DIR}/wsj-train.csv" ]; then
          "importer script before running this script."
 fi;
 
-export EXPERIMENT=DS2-WSJ-F64-C3x2x32x64-R1x1024-B16x8
+export EXPERIMENT=DS2-WSJ-F161-C3x32x64x96-R1x1024-B16x8
 
 export LOG_DIR=/ds2/experiments/${EXPERIMENT}
 export CHECKPOINT_DIR=/ds2/experiments/${EXPERIMENT}/checkpoints
@@ -31,22 +31,25 @@ python -u DeepSpeech2.py \
   --train_files "${COMPUTE_DATA_DIR}/wsj-train.csv" \
   --dev_files "${COMPUTE_DATA_DIR}/wsj-dev.csv" \
   --test_files "${COMPUTE_DATA_DIR}/wsj-test.csv" \
-  --num_audio_features 32 \
-  --input_type mfcc \
+  --input_type spectrogram \
+  --num_audio_features 161 \
   --num_conv_layers 3 \
   --num_rnn_layers 1 \
   --rnn_cell_dim 1024 \
+  --rnn_type gru \
   --n_hidden 1024 \
   --train_batch_size 16 \
   --dev_batch_size  16 \
   --test_batch_size 16 \
   --epoch 100 \
   --early_stop 0 \
-  --learning_rate 0.00005 \
+  --optimizer adam \
+  --learning_rate 0.0001 \
+  --decay_steps 3000 \
+  --decay_rate 0.5 \
   --display_step 0 \
   --validation_step 1 \
   --dropout_keep_prob 1.0 \
-  --default_stddev 0.046875 \
   --checkpoint_dir "${CHECKPOINT_DIR}" \
   --checkpoint_secs 18000 \
   --wer_log_pattern "GLOBAL LOG: logwer('${COMPUTE_ID}', '%s', '%s', %f)"\
