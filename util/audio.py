@@ -20,8 +20,8 @@ except ImportError:
         if DeprecationWarning.displayed is not True:
             DeprecationWarning.displayed = True
             print('------------------------------------------------------------------------', file=sys.stderr)
-            print('WARNING: libdeepspeech failed to load, resorting to deprecated code',      file=sys.stderr)
-            print('         Refer to README.md for instructions on installing libdeepspeech', file=sys.stderr)
+            print('WARNING: using python_speech_features: type {} num_featues {} '.format(input_type, numcep),
+                  file=sys.stderr)
             print('------------------------------------------------------------------------', file=sys.stderr)
 
         '''
@@ -90,6 +90,7 @@ except ImportError:
         # Whiten inputs (TODO: Should we whiten?)
         m = np.mean(train_inputs)
         v = np.std(train_inputs)
+        train_inputs = np.copy(train_inputs)
         train_inputs = (train_inputs - m) / v
 
         # Return results
