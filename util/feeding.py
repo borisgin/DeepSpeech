@@ -150,7 +150,11 @@ class _DataSetLoader(object):
         file_count = len(self._data_set.files)
         index = -1
         while not coord.should_stop():
-            index = self._data_set.next_index(index) % file_count
+            index = self._data_set.next_index(index)
+            # Reshuffle dataset after every epoch
+            if index >= file_count:
+                self._data_set.files = np.random.permutation(self._data_set.files)
+                index = 0
             wav_file, transcript = self._data_set.files[index]
             source = audiofile_to_input_vector(wav_file, self._model_feeder.numcep, self._model_feeder.numcontext,
                                                self._model_feeder.input_type)
