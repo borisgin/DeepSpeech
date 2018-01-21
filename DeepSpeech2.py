@@ -546,7 +546,7 @@ def DeepSpeech2(batch_x, seq_length,training):
     # Convolutional layers configuration
     conv_layers = [
         {'kernel_size': [11,41], 'stride': [2,2], 'num_channels': 32, 'padding': 'SAME' },
-        {'kernel_size': [11,21], 'stride': [2,2], 'num_channels': 64, 'padding': 'SAME' },
+        {'kernel_size': [11,21], 'stride': [1,2], 'num_channels': 64, 'padding': 'SAME' },
         {'kernel_size': [11,21], 'stride': [1,2], 'num_channels': 96, 'padding': 'SAME' }
     ]
     # Number of convolutional num_conv_layers
