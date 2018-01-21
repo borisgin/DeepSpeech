@@ -59,7 +59,7 @@ tf.app.flags.DEFINE_integer ('iters_per_worker', 1,           'number of train o
 
 tf.app.flags.DEFINE_boolean ('train',            True,        'wether to train the network')
 tf.app.flags.DEFINE_boolean ('test',             True,        'wether to test the network')
-tf.app.flags.DEFINE_integer ('epoch',            75,          'target epoch to train - if negative, the absolute number of additional epochs will be trained')
+tf.app.flags.DEFINE_integer ('epoch',            100,         'target epoch to train - if negative, the absolute number of additional epochs will be trained')
 
 tf.app.flags.DEFINE_boolean ('use_warpctc',      False,       'wether to use GPU bound Warp-CTC')
 
@@ -78,6 +78,9 @@ tf.app.flags.DEFINE_float   ('learning_rate',    0.0001,       'learning rate of
 tf.app.flags.DEFINE_integer ('decay_steps',      0,           'number of LR decay steps')
 tf.app.flags.DEFINE_float   ('decay_rate',       0.1,         'decay_rate')
 tf.app.flags.DEFINE_float   ('momentum',         0.9,         'momentum for SGD with momentum')
+
+tf.app.flags.DEFINE_float   ('weight_decay',     0.0,         'weight_decay')
+
 
 # Batch sizes
 
@@ -125,14 +128,14 @@ tf.app.flags.DEFINE_integer ('summary_secs',     None,        'interval in secon
 tf.app.flags.DEFINE_integer ('summary_steps',    None,        'interval in steps for saving TensorBoard summaries - if 0, no summaries will be written')
 
 # Geometry
-tf.app.flags.DEFINE_string  ('input_type',      'mfcc',       'input features type: mfcc or spectrogram')
-tf.app.flags.DEFINE_integer ('num_audio_features',        32,          'number of mfcc coefficients or spectrogram frequency bins')
+tf.app.flags.DEFINE_string  ('input_type',         'spectrogram',       'input features type: mfcc or spectrogram')
+tf.app.flags.DEFINE_integer ('num_audio_features',        161,          'number of mfcc coefficients or spectrogram frequency bins')
 
 
 # TODO: input type: mfcc or spectrogram
 
 tf.app.flags.DEFINE_integer ('num_conv_layers',  2,            'layer width to use when initialising layers')
-tf.app.flags.DEFINE_integer ('num_rnn_layers',   2,            'layer width to use when initialising layers')
+tf.app.flags.DEFINE_integer ('num_rnn_layers',   1,            'layer width to use when initialising layers')
 tf.app.flags.DEFINE_string  ('rnn_type',        'gru',         'rnn-cell type')
 tf.app.flags.DEFINE_string  ('rnn_cell_dim',     1024,         'rnn-cell dim')
 
@@ -267,8 +270,11 @@ def initialize_globals():
     global n_hidden
     n_hidden = FLAGS.n_hidden
 
-    global dropout
-    dropout = FLAGS.dropout_keep_prob
+    global weight_decay
+    weight_decay = FLAGS.weight_decay
+
+ #   global dropout
+ #   dropout = FLAGS.dropout_keep_prob
 
 
 
@@ -350,7 +356,7 @@ def log_error(message):
 # Graph Creation
 # ==============
 
-def variable_on_worker_level(name, shape, initializer,trainable= True):
+def variable_on_worker_level(name, shape, initializer, trainable= True, regularizer=tf.contrib.layers.l2_regularizer):
     r'''
     Next we concern ourselves with graph creation.
     However, before we do so we must introduce a utility function ``variable_on_worker_level()``
@@ -364,7 +370,9 @@ def variable_on_worker_level(name, shape, initializer,trainable= True):
 
     with tf.device(device):
         # Create or get apropos variable
-        var = tf.get_variable(name=name, shape=shape, initializer=initializer,trainable = trainable)
+
+        var = tf.get_variable(name=name, shape=shape, initializer=initializer,trainable = trainable,
+               regularizer = tf.contrib.layers.l2_regularizer(weight_decay) if (regularizer is not None) and (weight_decay > 0.0) else None)
     return var
 
 
@@ -411,7 +419,37 @@ class CustomRNNCell2(tf.contrib.rnn.BasicRNNCell):
             #output = relux(res, capping=20)
         return output, output
 
-# ----------------------------------------------------------------
+# --------------------------------------------------------------------
+
+def batch_norm(name,
+               input,
+               training = True):
+    n_channels = input.get_shape()[-1]
+    gamma =  0.95
+    beta = variable_on_worker_level(name + '.beta',  shape=[n_channels],
+                                    initializer=tf.zeros_initializer)
+    gamma = variable_on_worker_level(name + '.gamma',  shape=[n_channels],
+                                   initializer=tf.ones_initializer)
+    g_mean = variable_on_worker_level(name + '.g_mean', shape=[n_channels],
+                                      initializer=tf.zeros_initializer,
+                                      trainable=False, regularizer= None)
+    g_var = variable_on_worker_level(name + '.g_var', shape=[n_channels],
+                                     initializer=tf.ones_initializer,
+                                     trainable=False, regularizer= None)
+    if (training):
+        batch_mean, batch_var = tf.nn.moments(input, [0, 1, 2])
+        g_mean = g_mean * gamma + batch_mean * (1 - gamma)
+        g_var  = g_var * gamma + batch_mean * (1 - gamma)
+        mean = batch_mean
+        var  = batch_var
+    else:
+        mean = g_mean
+        var  = g_var
+
+    normed = tf.nn.batch_normalization(input, mean, var, beta, gamma, 1e-3)
+    return normed
+
+
 def conv2D(name,
            input,
            in_channels = 1,
@@ -421,7 +459,8 @@ def conv2D(name,
            padding='SAME',
            activation_fn=lambda x: tf.minimum(tf.nn.relu(x), FLAGS.relu_clip),
            weights_initializer= tf.contrib.layers.xavier_initializer(uniform=False),
-           bias_initializer=tf.zeros_initializer()
+           bias_initializer=tf.zeros_initializer(),
+           training = True
            ):
     #filter_shape= [kernel_size[0], kernel_size[1], in_channels, output_channels]
     w = variable_on_worker_level(name+'.w',
@@ -433,19 +472,21 @@ def conv2D(name,
 
     s = [1, strides[0], strides[1], 1]
     y = tf.nn.conv2d(input, w, s, padding)
+    y = batch_norm(name, y , training = training)
     y = tf.nn.bias_add(y, b)
     output = activation_fn(y)
     return output
 
 #===========================================================
 
-def rnn_cell(rnn_cell_dim = 1024, layer_type="gru"):
+def rnn_cell(rnn_cell_dim = 1024, layer_type="gru", dropout=1.0):
     if (layer_type=="lstm"):
         cell = tf.contrib.rnn.BasicLSTMCell(rnn_cell_dim, forget_bias=1.0, state_is_tuple=True) \
                        if 'reuse' not in inspect.getargspec(tf.contrib.rnn.BasicLSTMCell.__init__).args else \
                        tf.contrib.rnn.BasicLSTMCell(rnn_cell_dim, forget_bias=1.0, state_is_tuple=True,
                                                 reuse=tf.get_variable_scope().reuse)
-        cell = tf.contrib.rnn.DropoutWrapper(cell, input_keep_prob= dropout, output_keep_prob= dropout,
+        if (dropout < 1.0):
+            cell = tf.contrib.rnn.DropoutWrapper(cell, input_keep_prob= dropout, output_keep_prob= dropout,
                                                      seed=FLAGS.random_seed)
     elif (layer_type=="layernorm_lstm"):
          cell = tf.contrib.rnn.LayerNormBasicLSTMCell(rnn_cell_dim, forget_bias=1.0,
@@ -456,9 +497,10 @@ def rnn_cell(rnn_cell_dim = 1024, layer_type="gru"):
                                                       dropout_keep_prob=dropout, dropout_prob_seed=FLAGS.random_seed,
                                                       reuse=tf.get_variable_scope().reuse)
     elif (layer_type=="gru"):
-            cell = tf.contrib.rnn.GRUCell(rnn_cell_dim) \
-                if 'reuse' not in inspect.getargspec(tf.contrib.rnn.GRUCell.__init__).args else \
-                tf.contrib.rnn.GRUCell(rnn_cell_dim, reuse=tf.get_variable_scope().reuse)
+        cell = tf.contrib.rnn.GRUCell(rnn_cell_dim) \
+            if 'reuse' not in inspect.getargspec(tf.contrib.rnn.GRUCell.__init__).args else \
+            tf.contrib.rnn.GRUCell(rnn_cell_dim, reuse=tf.get_variable_scope().reuse)
+        if (dropout < 1.0):
             cell = tf.contrib.rnn.DropoutWrapper(cell, input_keep_prob=dropout, output_keep_prob=dropout,
                                          seed=FLAGS.random_seed)
 
@@ -467,7 +509,7 @@ def rnn_cell(rnn_cell_dim = 1024, layer_type="gru"):
 
 #===========================================================
 
-def DeepSpeech2(batch_x, seq_length, dropout):
+def DeepSpeech2(batch_x, seq_length,training):
     r'''
     DeepSpeech2-like model https://arxiv.org/pdf/1512.02595.pdf
     The variables named ``layer_name/w``, hold the learned weights.
@@ -524,8 +566,8 @@ def DeepSpeech2(batch_x, seq_length, dropout):
             seq_length = (seq_length - kernel_size[0] + strides[0]) // strides[0]
             f_out = (f_out - kernel_size[1]+strides[1]) // strides[1]
         else:
-            seq_length = seq_length // strides[0]
-            f_out = f_out // strides[1]
+            seq_length = (seq_length + strides[0]-1) // strides[0]
+            f_out = (f_out + strides[1] -  1) // strides[1]
 
         print('{}: kernel={} stride={} ch=[{}, {}] f_out={}'.format(
             name, kernel_size, strides, ch_in, ch_out, f_out))
@@ -537,7 +579,8 @@ def DeepSpeech2(batch_x, seq_length, dropout):
             weights_initializer=tf.contrib.layers.xavier_initializer(uniform=False),
             # weights_initializer=tf.contrib.layers.variance_scaling_initializer(),
             # bias_initializer=tf.random_normal_initializer(stddev=0.00001)
-            bias_initializer = tf.constant_initializer(0.000001)
+            bias_initializer = tf.constant_initializer(0.000001),
+                      training = training
         )
     
     #--- FC layers -----
@@ -552,13 +595,18 @@ def DeepSpeech2(batch_x, seq_length, dropout):
    #   rnn_input = tf.reshape(conv, [-1, batch_x_shape[0], fc_in])
     rnn_input = tf.reshape(conv, [-1, batch_size, fc_in])
     #print(rnn_input.get_shape())
-    # ----- RNN ----------
+    # ----- RNN ----------------------------------------------------
     #num_rnn_layers = 1 #3
+    if training:
+        dropout = FLAGS.dropout
+    else:
+        dropout = 1.0
+
     rnn_cell_dim = int(FLAGS.rnn_cell_dim)
     multirnn_cell_fw = tf.contrib.rnn.MultiRNNCell(
-        [rnn_cell(rnn_cell_dim=rnn_cell_dim, layer_type=FLAGS.rnn_type) for _ in range(num_rnn_layers)])
+        [rnn_cell(rnn_cell_dim=rnn_cell_dim, layer_type=FLAGS.rnn_type, dropout=dropout) for _ in range(num_rnn_layers)])
     multirnn_cell_bw = tf.contrib.rnn.MultiRNNCell(
-        [rnn_cell(rnn_cell_dim=rnn_cell_dim, layer_type=FLAGS.rnn_type) for _ in range(num_rnn_layers)])
+        [rnn_cell(rnn_cell_dim=rnn_cell_dim, layer_type=FLAGS.rnn_type, dropout=dropout) for _ in range(num_rnn_layers)])
     outputs,output_states = tf.nn.bidirectional_dynamic_rnn(cell_fw = multirnn_cell_fw,
                                                  cell_bw = multirnn_cell_bw,
                                                  inputs=rnn_input,
@@ -576,15 +624,19 @@ def DeepSpeech2(batch_x, seq_length, dropout):
     #--------------------------------------------------------------------------------
     # hidden layer with clipped RELU activation and dropout
 
-    h5 = variable_on_worker_level('h5', [(2 * rnn_cell_dim), n_hidden], tf.contrib.layers.xavier_initializer(uniform=True))
-    b5 = variable_on_worker_level('b5', [n_hidden], tf.constant_initializer(0.))
+    h5 = variable_on_worker_level('h5', [(2 * rnn_cell_dim), n_hidden],
+                                  tf.contrib.layers.xavier_initializer(uniform=True))
+    b5 = variable_on_worker_level('b5', [n_hidden],
+                                  tf.constant_initializer(0.))
 #    b5 = variable_on_worker_level('b5', [n_hidden], tf.random_normal_initializer(stddev=0.00001))
     layer_5 = tf.minimum(tf.nn.relu(tf.add(tf.matmul(outputs, h5), b5)), FLAGS.relu_clip)
     layer_5 = tf.nn.dropout(layer_5, dropout)
 
     # creating the logits.
-    h6 = variable_on_worker_level('h6', [n_hidden, n_character], tf.contrib.layers.xavier_initializer(uniform=True))
-    b6 = variable_on_worker_level('b6', [n_character], tf.constant_initializer(0.))
+    h6 = variable_on_worker_level('h6', [n_hidden, n_character],
+                                  tf.contrib.layers.xavier_initializer(uniform=True))
+    b6 = variable_on_worker_level('b6', [n_character],
+                                  tf.constant_initializer(0.))
  #   b6 = variable_on_worker_level('b6', [n_character], tf.random_normal_initializer(stddev=0.00001))
     layer_6 = tf.add(tf.matmul(layer_5, h6), b6)
 
@@ -626,7 +678,7 @@ def decode_with_lm(inputs, sequence_length, beam_width=128,
 # Conveniently, this loss function is implemented in TensorFlow.
 # Thus, we can simply make use of this implementation to define our loss.
 
-def calculate_mean_edit_distance_and_loss(model_feeder, tower, dropout):
+def calculate_mean_edit_distance_and_loss(model_feeder, tower, training):
     r'''
     This routine beam search decodes a mini-batch and calculates the loss and mean edit distance.
     Next to total and average loss it returns the mean edit distance,
@@ -638,7 +690,7 @@ def calculate_mean_edit_distance_and_loss(model_feeder, tower, dropout):
     # Calculate the logits of the batch using BiRNN
  #   logits, batch_seq_len = DeepSpeech2(batch_x, tf.to_int64(batch_seq_len), dropout)
  #   logits, batch_seq_len = DeepSpeech2(batch_x, tf.to_int32(batch_seq_len), dropout)
-    logits, batch_seq_len = DeepSpeech2(batch_x, batch_seq_len, dropout)
+    logits, batch_seq_len = DeepSpeech2(batch_x, batch_seq_len, training=training)
 
     # Compute the CTC loss using either TensorFlow's `ctc_loss` or Baidu's `warp_ctc_loss`.
     if FLAGS.use_warpctc:
@@ -758,7 +810,7 @@ def get_tower_results(model_feeder, optimizer):
                     # Calculate the avg_loss and mean_edit_distance and retrieve the decoded
                     # batch along with the original batch's labels (Y) of this tower
                     total_loss, avg_loss, distance, mean_edit_distance, decoded, labels = \
-                        calculate_mean_edit_distance_and_loss(model_feeder, i, dropout=1.0  if optimizer is None else dropout)
+                        calculate_mean_edit_distance_and_loss(model_feeder, i, training = (optimizer is None))
 
                     # Allow for variables to be re-used by the next tower
                     tf.get_variable_scope().reuse_variables()
@@ -1622,7 +1674,7 @@ def train(server=None):
                                tower_feeder_count=len(available_devices),
                                input_type=input_type)
 
-    if (FLAGS.decay_steps > 0):
+    if (FLAGS.decay_steps > 0) and (FLAGS.decay_rate > 0):
         lr = tf.train.exponential_decay(learning_rate = FLAGS.learning_rate,
                                              global_step   = global_step,
                                              decay_steps   = FLAGS.decay_steps,
@@ -1758,13 +1810,14 @@ def train(server=None):
                         # Compute the batch
                         batch_time = time.time()
 #                        _, current_step, batch_loss, batch_report = session.run([train_op, global_step, loss, report_params], **extra_params)
-                        _, current_step, batch_loss, learn_rate, batch_report = session.run([train_op, global_step, loss, lr, report_params], **extra_params)
+                        _, current_step, batch_loss, learn_rate, batch_report = session.run([train_op,
+                                                                global_step, loss, lr, report_params], **extra_params)
 
                         batch_time = time.time() - batch_time
                         session_time += batch_time
                         # Uncomment the next line for debugging race conditions / distributed TF
                         log_debug('Finished batch step %d %f' %(current_step, batch_loss))
-                        if ((current_step % 1) == 0):
+                        if ((current_step % 10) == 0):
                             log_info('time: %s, step: %d, loss: %f lr: %f' % (format_duration(session_time), current_step,
                                                                               batch_loss, learn_rate)
                                      )
@@ -1818,7 +1871,7 @@ def create_inference_graph(batch_size=None, output_is_logits=False, use_new_deco
     seq_length = tf.placeholder(tf.int32, [batch_size], name='input_lengths')
 
     # Calculate the logits of the batch using BiRNN
-    logits = DeepSpeech2(input_tensor, tf.to_int64(seq_length) if FLAGS.use_seq_length else None, dropout=-1.0)
+    logits = DeepSpeech2(input_tensor, tf.to_int64(seq_length) if FLAGS.use_seq_length else None)
 
     if output_is_logits:
         return logits
