@@ -356,11 +356,9 @@ def log_error(message):
 # Graph Creation
 # ==============
 
-def variable_on_worker_level(name, shape, initializer, trainable= True, regularizer=tf.contrib.layers.l2_regularizer):
+def variable_on_worker_level(name, shape, initializer, trainable=True, regularizer=None):
     r'''
-    Next we concern ourselves with graph creation.
-    However, before we do so we must introduce a utility function ``variable_on_worker_level()``
-    used to create a variable in CPU memory.
+    an utility function ``variable_on_worker_level() to create a variable in CPU memory.
     '''
     # Use the /cpu:0 device on worker_device for scoped operations
     if len(FLAGS.ps_hosts) == 0:
@@ -370,13 +368,11 @@ def variable_on_worker_level(name, shape, initializer, trainable= True, regulari
 
     with tf.device(device):
         # Create or get apropos variable
-
-        var = tf.get_variable(name=name, shape=shape, initializer=initializer,trainable = trainable,
-               regularizer = tf.contrib.layers.l2_regularizer(weight_decay) if (regularizer is not None) and (weight_decay > 0.0) else None)
+        var = tf.get_variable(name=name, shape=shape, initializer=initializer, trainable = trainable,
+                              regularizer = regularizer)
     return var
 
-
-
+'''
 class CustomRNNCell2(tf.contrib.rnn.BasicRNNCell):
     """ This is a customRNNCell2 that allows the weights
     to be re-used on multiple devices. In particular, the Matrix of weights is
@@ -418,35 +414,42 @@ class CustomRNNCell2(tf.contrib.rnn.BasicRNNCell):
             output = tf.minimum(tf.nn.relu(res), FLAGS.relu_clip)
             #output = relux(res, capping=20)
         return output, output
-
+'''
 # --------------------------------------------------------------------
 
 def batch_norm(name,
                input,
                training = True):
     n_channels = input.get_shape()[-1]
-    gamma =  0.95
+    bn_momentum = 0.95
+    bn_epsilon = 0.001
     beta = variable_on_worker_level(name + '.beta',  shape=[n_channels],
-                                    initializer=tf.zeros_initializer)
+                                    initializer=tf.zeros_initializer,
+                                    trainable=True,
+                                    regularizer=tf.contrib.layers.l2_regularizer(weight_decay) if (weight_decay > 0.0)
+                                                 else None)
     gamma = variable_on_worker_level(name + '.gamma',  shape=[n_channels],
-                                   initializer=tf.ones_initializer)
+                                     initializer=tf.ones_initializer,
+                                     trainable=True,
+                                     regularizer=tf.contrib.layers.l2_regularizer(weight_decay) if (weight_decay > 0.0)
+                                                 else None)
     g_mean = variable_on_worker_level(name + '.g_mean', shape=[n_channels],
-                                      initializer=tf.zeros_initializer,
-                                      trainable=False, regularizer= None)
+                                     initializer=tf.zeros_initializer,
+                                     trainable=False, regularizer= None)
     g_var = variable_on_worker_level(name + '.g_var', shape=[n_channels],
                                      initializer=tf.ones_initializer,
                                      trainable=False, regularizer= None)
     if (training):
         batch_mean, batch_var = tf.nn.moments(input, [0, 1, 2])
-        g_mean = g_mean * gamma + batch_mean * (1 - gamma)
-        g_var  = g_var * gamma + batch_mean * (1 - gamma)
+        g_mean = g_mean * bn_momentum + batch_mean * (1.0 - bn_momentum)
+        g_var  = g_var  * bn_momentum + batch_mean * (1.0 - bn_momentum)
         mean = batch_mean
         var  = batch_var
     else:
         mean = g_mean
         var  = g_var
 
-    normed = tf.nn.batch_normalization(input, mean, var, beta, gamma, 1e-3)
+    normed = tf.nn.batch_normalization(input, mean, var, beta, gamma, bn_epsilon)
     return normed
 
 
@@ -458,17 +461,20 @@ def conv2D(name,
            strides=[1,1],
            padding='SAME',
            activation_fn=lambda x: tf.minimum(tf.nn.relu(x), FLAGS.relu_clip),
-           weights_initializer= tf.contrib.layers.xavier_initializer(uniform=False),
+           weights_initializer=tf.contrib.layers.xavier_initializer(uniform=False),
            bias_initializer=tf.zeros_initializer(),
            training = True
            ):
     #filter_shape= [kernel_size[0], kernel_size[1], in_channels, output_channels]
     w = variable_on_worker_level(name+'.w',
                                  shape = [kernel_size[0], kernel_size[1], in_channels, output_channels],
-                                 initializer = weights_initializer)
+                                 initializer = weights_initializer, trainable=True,
+                                 regularizer=tf.contrib.layers.l2_regularizer(weight_decay) if (weight_decay > 0.) else None)
+
     b = variable_on_worker_level(name+'.b',
-                                  shape=[output_channels],
-                                  initializer = bias_initializer )
+                                 shape=[output_channels],
+                                 initializer = bias_initializer, trainable=True,
+                                 regularizer=tf.contrib.layers.l2_regularizer(weight_decay) if (weight_decay > 0.) else None)
 
     s = [1, strides[0], strides[1], 1]
     y = tf.nn.conv2d(input, w, s, padding)
@@ -625,19 +631,32 @@ def DeepSpeech2(batch_x, seq_length,training):
     # hidden layer with clipped RELU activation and dropout
 
     h5 = variable_on_worker_level('h5', [(2 * rnn_cell_dim), n_hidden],
-                                  tf.contrib.layers.xavier_initializer(uniform=True))
+                                  tf.contrib.layers.xavier_initializer(uniform=True),
+                                  trainable=True,
+                                  regularizer=tf.contrib.layers.l2_regularizer(weight_decay) if (weight_decay > 0.)
+                                              else None)
     b5 = variable_on_worker_level('b5', [n_hidden],
-                                  tf.constant_initializer(0.))
-#    b5 = variable_on_worker_level('b5', [n_hidden], tf.random_normal_initializer(stddev=0.00001))
+                                  tf.constant_initializer(0.),
+                                  trainable=True,
+                                  regularizer=tf.contrib.layers.l2_regularizer(weight_decay) if (weight_decay > 0.)
+                                              else None)
+
+    #    b5 = variable_on_worker_level('b5', [n_hidden], tf.random_normal_initializer(stddev=0.00001))
     layer_5 = tf.minimum(tf.nn.relu(tf.add(tf.matmul(outputs, h5), b5)), FLAGS.relu_clip)
     layer_5 = tf.nn.dropout(layer_5, dropout)
 
     # creating the logits.
     h6 = variable_on_worker_level('h6', [n_hidden, n_character],
-                                  tf.contrib.layers.xavier_initializer(uniform=True))
+                                  tf.contrib.layers.xavier_initializer(uniform=True),
+                                  trainable=True,
+                                  regularizer=tf.contrib.layers.l2_regularizer(weight_decay) if (weight_decay > 0.)
+                                              else None)
+
     b6 = variable_on_worker_level('b6', [n_character],
-                                  tf.constant_initializer(0.))
- #   b6 = variable_on_worker_level('b6', [n_character], tf.random_normal_initializer(stddev=0.00001))
+                                  tf.constant_initializer(0.),
+                                  trainable=True,
+                                  regularizer=tf.contrib.layers.l2_regularizer(weight_decay) if (weight_decay > 0.)
+                                              else None)
     layer_6 = tf.add(tf.matmul(layer_5, h6), b6)
 
     # reshape to time-major  [T*B, H6] --> [T, B,H6].
