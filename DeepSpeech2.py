@@ -59,7 +59,7 @@ tf.app.flags.DEFINE_integer ('iters_per_worker', 1,           'number of train o
 
 tf.app.flags.DEFINE_boolean ('train',            True,        'wether to train the network')
 tf.app.flags.DEFINE_boolean ('test',             True,        'wether to test the network')
-tf.app.flags.DEFINE_integer ('epoch',            75,          'target epoch to train - if negative, the absolute number of additional epochs will be trained')
+tf.app.flags.DEFINE_integer ('epoch',            100,         'target epoch to train - if negative, the absolute number of additional epochs will be trained')
 
 tf.app.flags.DEFINE_boolean ('use_warpctc',      False,       'wether to use GPU bound Warp-CTC')
 
@@ -78,6 +78,9 @@ tf.app.flags.DEFINE_float   ('learning_rate',    0.0001,       'learning rate of
 tf.app.flags.DEFINE_integer ('decay_steps',      0,           'number of LR decay steps')
 tf.app.flags.DEFINE_float   ('decay_rate',       0.1,         'decay_rate')
 tf.app.flags.DEFINE_float   ('momentum',         0.9,         'momentum for SGD with momentum')
+
+tf.app.flags.DEFINE_float   ('weight_decay',     0.0,         'weight_decay')
+
 
 # Batch sizes
 
@@ -267,8 +270,11 @@ def initialize_globals():
     global n_hidden
     n_hidden = FLAGS.n_hidden
 
-    global dropout
-    dropout = FLAGS.dropout_keep_prob
+    global weight_decay
+    weight_decay = FLAGS.weight_decay
+
+ #   global dropout
+ #   dropout = FLAGS.dropout_keep_prob
 
 
 
@@ -350,7 +356,7 @@ def log_error(message):
 # Graph Creation
 # ==============
 
-def variable_on_worker_level(name, shape, initializer,trainable= True):
+def variable_on_worker_level(name, shape, initializer, trainable= True, regularizer=tf.contrib.layers.l2_regularizer):
     r'''
     Next we concern ourselves with graph creation.
     However, before we do so we must introduce a utility function ``variable_on_worker_level()``
@@ -364,7 +370,9 @@ def variable_on_worker_level(name, shape, initializer,trainable= True):
 
     with tf.device(device):
         # Create or get apropos variable
-        var = tf.get_variable(name=name, shape=shape, initializer=initializer,trainable = trainable)
+
+        var = tf.get_variable(name=name, shape=shape, initializer=initializer,trainable = trainable,
+               regularizer = tf.contrib.layers.l2_regularizer(weight_decay) if (regularizer is not None) and (weight_decay > 0.0) else None)
     return var
 
 
@@ -424,10 +432,10 @@ def batch_norm(name,
                                    initializer=tf.ones_initializer)
     g_mean = variable_on_worker_level(name + '.g_mean', shape=[n_channels],
                                       initializer=tf.zeros_initializer,
-                                      trainable=False)
+                                      trainable=False, regularizer= None)
     g_var = variable_on_worker_level(name + '.g_var', shape=[n_channels],
                                      initializer=tf.ones_initializer,
-                                     trainable=False)
+                                     trainable=False, regularizer= None)
     if (training):
         batch_mean, batch_var = tf.nn.moments(input, [0, 1, 2])
         g_mean = g_mean * gamma + batch_mean * (1 - gamma)
@@ -471,7 +479,7 @@ def conv2D(name,
 
 #===========================================================
 
-def rnn_cell(rnn_cell_dim = 1024, layer_type="gru"):
+def rnn_cell(rnn_cell_dim = 1024, layer_type="gru", dropout=1.0):
     if (layer_type=="lstm"):
         cell = tf.contrib.rnn.BasicLSTMCell(rnn_cell_dim, forget_bias=1.0, state_is_tuple=True) \
                        if 'reuse' not in inspect.getargspec(tf.contrib.rnn.BasicLSTMCell.__init__).args else \
@@ -587,13 +595,18 @@ def DeepSpeech2(batch_x, seq_length,training):
    #   rnn_input = tf.reshape(conv, [-1, batch_x_shape[0], fc_in])
     rnn_input = tf.reshape(conv, [-1, batch_size, fc_in])
     #print(rnn_input.get_shape())
-    # ----- RNN ----------
+    # ----- RNN ----------------------------------------------------
     #num_rnn_layers = 1 #3
+    if training:
+        dropout = FLAGS.dropout
+    else:
+        dropout = 1.0
+
     rnn_cell_dim = int(FLAGS.rnn_cell_dim)
     multirnn_cell_fw = tf.contrib.rnn.MultiRNNCell(
-        [rnn_cell(rnn_cell_dim=rnn_cell_dim, layer_type=FLAGS.rnn_type) for _ in range(num_rnn_layers)])
+        [rnn_cell(rnn_cell_dim=rnn_cell_dim, layer_type=FLAGS.rnn_type, dropout=dropout) for _ in range(num_rnn_layers)])
     multirnn_cell_bw = tf.contrib.rnn.MultiRNNCell(
-        [rnn_cell(rnn_cell_dim=rnn_cell_dim, layer_type=FLAGS.rnn_type) for _ in range(num_rnn_layers)])
+        [rnn_cell(rnn_cell_dim=rnn_cell_dim, layer_type=FLAGS.rnn_type, dropout=dropout) for _ in range(num_rnn_layers)])
     outputs,output_states = tf.nn.bidirectional_dynamic_rnn(cell_fw = multirnn_cell_fw,
                                                  cell_bw = multirnn_cell_bw,
                                                  inputs=rnn_input,
@@ -611,15 +624,19 @@ def DeepSpeech2(batch_x, seq_length,training):
     #--------------------------------------------------------------------------------
     # hidden layer with clipped RELU activation and dropout
 
-    h5 = variable_on_worker_level('h5', [(2 * rnn_cell_dim), n_hidden], tf.contrib.layers.xavier_initializer(uniform=True))
-    b5 = variable_on_worker_level('b5', [n_hidden], tf.constant_initializer(0.))
+    h5 = variable_on_worker_level('h5', [(2 * rnn_cell_dim), n_hidden],
+                                  tf.contrib.layers.xavier_initializer(uniform=True))
+    b5 = variable_on_worker_level('b5', [n_hidden],
+                                  tf.constant_initializer(0.))
 #    b5 = variable_on_worker_level('b5', [n_hidden], tf.random_normal_initializer(stddev=0.00001))
     layer_5 = tf.minimum(tf.nn.relu(tf.add(tf.matmul(outputs, h5), b5)), FLAGS.relu_clip)
     layer_5 = tf.nn.dropout(layer_5, dropout)
 
     # creating the logits.
-    h6 = variable_on_worker_level('h6', [n_hidden, n_character], tf.contrib.layers.xavier_initializer(uniform=True))
-    b6 = variable_on_worker_level('b6', [n_character], tf.constant_initializer(0.))
+    h6 = variable_on_worker_level('h6', [n_hidden, n_character],
+                                  tf.contrib.layers.xavier_initializer(uniform=True))
+    b6 = variable_on_worker_level('b6', [n_character],
+                                  tf.constant_initializer(0.))
  #   b6 = variable_on_worker_level('b6', [n_character], tf.random_normal_initializer(stddev=0.00001))
     layer_6 = tf.add(tf.matmul(layer_5, h6), b6)
 
@@ -1793,13 +1810,14 @@ def train(server=None):
                         # Compute the batch
                         batch_time = time.time()
 #                        _, current_step, batch_loss, batch_report = session.run([train_op, global_step, loss, report_params], **extra_params)
-                        _, current_step, batch_loss, learn_rate, batch_report = session.run([train_op, global_step, loss, lr, report_params], **extra_params)
+                        _, current_step, batch_loss, learn_rate, batch_report = session.run([train_op,
+                                                                global_step, loss, lr, report_params], **extra_params)
 
                         batch_time = time.time() - batch_time
                         session_time += batch_time
                         # Uncomment the next line for debugging race conditions / distributed TF
                         log_debug('Finished batch step %d %f' %(current_step, batch_loss))
-                        if ((current_step % 1) == 0):
+                        if ((current_step % 10) == 0):
                             log_info('time: %s, step: %d, loss: %f lr: %f' % (format_duration(session_time), current_step,
                                                                               batch_loss, learn_rate)
                                      )

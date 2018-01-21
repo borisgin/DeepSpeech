@@ -27,6 +27,7 @@ if [ ! -d "$SUMMARY_DIR" ]; then
   mkdir  ${SUMMARY_DIR}
 fi
 
+
 python -u DeepSpeech2.py \
   --train_files "${COMPUTE_DATA_DIR}/wsj-train.csv" \
   --dev_files "${COMPUTE_DATA_DIR}/wsj-dev.csv" \
@@ -46,10 +47,11 @@ python -u DeepSpeech2.py \
   --optimizer adam \
   --learning_rate 0.0001 \
   --decay_steps 3000 \
-  --decay_rate 0.5 \
-  --display_step 0 \
+  --decay_rate 0.9 \
+  --display_step 10 \
   --validation_step 1 \
-  --dropout_keep_prob 1.0 \
+  --dropout_keep_prob 0.9 \
+  --weight_decay 0.0005 \
   --checkpoint_dir "${CHECKPOINT_DIR}" \
   --checkpoint_secs 18000 \
   --wer_log_pattern "GLOBAL LOG: logwer('${COMPUTE_ID}', '%s', '%s', %f)"\
