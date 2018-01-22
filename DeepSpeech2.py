@@ -415,6 +415,10 @@ def batch_norm(name,
                    initializer=tf.ones_initializer,
                    trainable=True,
                    regularizer=tf.contrib.layers.l2_regularizer(weight_decay) if (weight_decay > 0.0) else None)
+    batch_mean, batch_var = tf.nn.moments(input, [0, 1, 2])
+    normed = tf.nn.batch_normalization(input, batch_mean, batch_var, beta, gamma, bn_epsilon)
+
+    '''
     g_mean = variable_on_worker_level(name + '/g_mean', shape=[n_channels],
                     initializer=tf.zeros_initializer,
                     trainable=False,
@@ -423,6 +427,7 @@ def batch_norm(name,
                     initializer=tf.ones_initializer,
                     trainable=False,
                     regularizer= None)
+    batch_mean, batch_var = tf.nn.moments(input, [0, 1, 2])    
     if (training):
         batch_mean, batch_var = tf.nn.moments(input, [0, 1, 2])
         g_mean = g_mean * bn_momentum + batch_mean * (1.0 - bn_momentum)
@@ -430,10 +435,10 @@ def batch_norm(name,
         mean = batch_mean
         var  = batch_var
     else:
-        mean = g_mean
-        var  = g_var
-
+        mean = batch_mean #g_mean
+        var  = batch_var  #g_var
     normed = tf.nn.batch_normalization(input, mean, var, beta, gamma, bn_epsilon)
+    '''
     return normed
 
 # =========================================================
@@ -514,7 +519,7 @@ def DeepSpeech2(batch_x, seq_length,training):
     F = batch_x_shape[2]
     print("ds2 inputs:", batch_x.get_shape().as_list())
     # Reshaping `batch_x` to a tensor with shape [B, T, F, 1]
-    batch_4d = tf.expand_dims(batch_x, dim=-1)  # [B,T,F,C]
+    batch_4d = tf.expand_dims(batch_x, dim=-1)
     # print(batch_4d.get_shape()
 
     #----- Convolutional layers -----------------------------------------------
@@ -601,6 +606,7 @@ def DeepSpeech2(batch_x, seq_length,training):
         outputs = tf.reshape(outputs, [-1, fc])
 
     #--- hidden layer with clipped RELU activation and dropout-----------------
+
     n_hidden_in = outputs.get_shape().as_list()[-1]
     h5 = variable_on_worker_level('h5', [n_hidden_in, n_hidden],
                    tf.contrib.layers.xavier_initializer(uniform=True),
@@ -614,6 +620,7 @@ def DeepSpeech2(batch_x, seq_length,training):
     outputs = tf.nn.dropout(outputs, dropout)
 
     #--- creating the logits --------------------------------------------------
+    #n_hidden = outputs.get_shape().as_list()[-1]
     h6 = variable_on_worker_level('h6', [n_hidden, n_character],
                    tf.contrib.layers.xavier_initializer(uniform=True),
                    trainable=True,
