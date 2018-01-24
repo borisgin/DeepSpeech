@@ -92,7 +92,6 @@ except ImportError:
         v = np.std(train_inputs)
         train_inputs = np.copy(train_inputs)
         train_inputs = (train_inputs - m) / v
-
         # Return results
         return train_inputs
 

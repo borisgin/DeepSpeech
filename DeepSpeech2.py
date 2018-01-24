@@ -129,7 +129,7 @@ tf.app.flags.DEFINE_integer ('summary_steps',    None,        'interval in steps
 
 # Geometry
 tf.app.flags.DEFINE_string  ('input_type',         'spectrogram',       'input features type: mfcc or spectrogram')
-tf.app.flags.DEFINE_integer ('num_audio_features',        161,          'number of mfcc coefficients or spectrogram frequency bins')
+tf.app.flags.DEFINE_integer ('num_audio_features',  161,       'number of mfcc coefficients or spectrogram frequency bins')
 
 
 # TODO: input type: mfcc or spectrogram
@@ -251,6 +251,7 @@ def initialize_globals():
     global input_type
     input_type = FLAGS.input_type
 
+
     # Number of MFCC features or spectrogram frequency bins
     global n_input
     n_input = FLAGS.num_audio_features #176 for 3 rnn # 126 # TODO: Determine this programatically from the sample rate
@@ -263,6 +264,31 @@ def initialize_globals():
 
     global num_conv_layers
     num_conv_layers = FLAGS.num_conv_layers
+
+    global conv_layers
+
+    conv_layers = [
+        {'kernel_size': [11,41], 'stride': [2,2], 'num_channels': 32, 'padding': 'SAME' },
+        {'kernel_size': [11,21], 'stride': [2,2], 'num_channels': 64, 'padding': 'SAME' },
+        {'kernel_size': [11,21], 'stride': [1,2], 'num_channels': 96, 'padding': 'SAME'}
+    ]
+    '''
+    conv_layers = [
+        {'kernel_size': [3,3], 'stride': [1,1], 'num_channels':  32, 'padding': 'SAME'},
+        {'kernel_size': [3,3], 'stride': [2,2], 'num_channels':  48, 'padding': 'SAME' },
+        {'kernel_size': [3,3], 'stride': [1,1], 'num_channels':  64, 'padding': 'SAME'},
+        {'kernel_size': [3,3], 'stride': [2,2], 'num_channels':  80, 'padding': 'SAME' },
+        {'kernel_size': [3,3], 'stride': [1,1], 'num_channels':  96, 'padding': 'SAME' },
+        {'kernel_size': [3,3], 'stride': [2,2], 'num_channels': 128, 'padding': 'SAME'}
+    ]
+    '''
+    global reduction_factor
+    reduction_factor = 1
+
+    N_conv = min(len(conv_layers), num_conv_layers)
+    for i in range(N_conv):
+        reduction_factor = reduction_factor * conv_layers[i]['stride'][0]
+    print("reduction_factor: {}".format(reduction_factor))
 
     global num_rnn_layers
     num_rnn_layers = FLAGS.num_rnn_layers
@@ -523,20 +549,20 @@ def DeepSpeech2(batch_x, seq_length,training):
     # print(batch_4d.get_shape()
 
     #----- Convolutional layers -----------------------------------------------
-
+    '''
     conv_layers = [
         {'kernel_size': [11,41], 'stride': [2,2], 'num_channels': 32, 'padding': 'SAME' },
-        {'kernel_size': [11,21], 'stride': [1,2], 'num_channels': 64, 'padding': 'SAME' },
-        {'kernel_size': [11,21], 'stride': [1,2], 'num_channels': 96, 'padding': 'SAME'}
+        {'kernel_size': [11,21], 'stride': [2,2], 'num_channels': 64, 'padding': 'SAME' },
+        {'kernel_size': [11,21], 'stride': [2,2], 'num_channels': 96, 'padding': 'SAME'}
     ]
-    '''
+    
     conv_layers = [
         {'kernel_size': [3,3], 'stride': [1,1], 'num_channels':  32, 'padding': 'SAME'},
         {'kernel_size': [3,3], 'stride': [2,2], 'num_channels':  48, 'padding': 'SAME' },
         {'kernel_size': [3,3], 'stride': [1,1], 'num_channels':  64, 'padding': 'SAME'},
-        {'kernel_size': [3,3], 'stride': [1,2], 'num_channels':  80, 'padding': 'SAME' },
+        {'kernel_size': [3,3], 'stride': [2,2], 'num_channels':  80, 'padding': 'SAME' },
         {'kernel_size': [3,3], 'stride': [1,1], 'num_channels':  96, 'padding': 'SAME' },
-        {'kernel_size': [3,3], 'stride': [1,2], 'num_channels': 128, 'padding': 'SAME'}
+        {'kernel_size': [3,3], 'stride': [2,2], 'num_channels': 128, 'padding': 'SAME'}
     ]
     '''
 
@@ -1660,7 +1686,8 @@ def train(server=None):
                                n_context,
                                alphabet,
                                tower_feeder_count=len(available_devices),
-                               input_type=input_type)
+                               input_type=input_type,
+                               reduction_factor=reduction_factor)
 
     if (FLAGS.decay_steps > 0) and (FLAGS.decay_rate > 0):
         lr = tf.train.exponential_decay(learning_rate = FLAGS.learning_rate,
@@ -1806,8 +1833,8 @@ def train(server=None):
                         # Uncomment the next line for debugging race conditions / distributed TF
                         log_debug('Finished batch step %d %f' %(current_step, batch_loss))
                         if ((current_step % 10) == 0):
-                            log_info('time: %s, step: %d, loss: %f lr: %f' % (format_duration(session_time), current_step,
-                                                                              batch_loss, learn_rate)
+                            log_info('time: %s, step: %d, loss: %f lr: %f' %
+                                      (format_duration(session_time), current_step, batch_loss, learn_rate)
                                      )
                             session_time = 0.0
 
@@ -1965,7 +1992,6 @@ def do_single_file_inference(input_file_path):
         saver.restore(session, checkpoint_path)
 
         mfcc = audiofile_to_input_vector(input_file_path, n_input, n_context, input_type)
-
         output = session.run(outputs['outputs'], feed_dict = {
             inputs['input']: [mfcc],
             inputs['input_lengths']: [len(mfcc)],

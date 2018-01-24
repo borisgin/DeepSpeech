@@ -26,7 +26,8 @@ class ModelFeeder(object):
                  alphabet,
                  tower_feeder_count=-1,
                  threads_per_queue=2,
-                 input_type='mfcc'):
+                 input_type='mfcc',
+                 reduction_factor = 1):
 
         self.train = train_set
         self.dev = dev_set
@@ -35,6 +36,7 @@ class ModelFeeder(object):
         self.numcep = numcep
         self.numcontext = numcontext
         self.input_type = input_type
+        self.reduction_factor  = reduction_factor
         self.tower_feeder_count = max(len(get_available_gpus()), 1) if tower_feeder_count < 0 else tower_feeder_count
         self.threads_per_queue = threads_per_queue
 
@@ -158,13 +160,25 @@ class _DataSetLoader(object):
                     self._data_set.files = np.random.permutation(self._data_set.files)
                 index = 0
             wav_file, transcript = self._data_set.files[index]
+            target = text_to_char_array(transcript, self._alphabet)
+            target_len = len(target)
+
             source = audiofile_to_input_vector(wav_file, self._model_feeder.numcep, self._model_feeder.numcontext,
                                                self._model_feeder.input_type, augment=self._data_set.is_for_train)
             source_len = len(source)
-            target = text_to_char_array(transcript, self._alphabet)
-            target_len = len(target)
-            if source_len < target_len:
-                raise ValueError('Error: Audio file {} is too short for transcription.'.format(wav_file))
+
+            # TODO: move fix ctc
+            min_len = target_len * self._model_feeder.reduction_factor
+            if source_len < min_len:
+                numpad = (min_len - source_len) // 2
+                print('len= {} pad: {}'.format(len(source), numpad))
+                pad = np.zeros([numpad, numcep])
+                source = np.concatenate((pad, source, pad))
+
+            #if source_len // self._model_feeder.reduction_factor < target_len:
+            #    print("audio {}, chars {}".format(source.shape, target_len))
+            #    raise ValueError('Error: Audio file {} is too short for transcription.'.format(wav_file))
+
             try:
                 session.run(self._enqueue_op, feed_dict={ self._model_feeder.ph_x: source,
                                                           self._model_feeder.ph_x_length: source_len,
