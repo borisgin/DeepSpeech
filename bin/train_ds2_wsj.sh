@@ -39,9 +39,9 @@ CONFIG="\
   --num_audio_features 161 \
   --num_conv_layers 3 \
   --num_rnn_layers 1 \
-  --rnn_cell_dim 1024 \
+  --rnn_cell_dim 256 \
   --rnn_type gru \
-  --n_hidden 1024 \
+  --n_hidden 128 \
   --train_batch_size 16 \
   --dev_batch_size  16 \
   --test_batch_size 16 \
