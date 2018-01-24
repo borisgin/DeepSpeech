@@ -1635,19 +1635,22 @@ def train(server=None):
                         FLAGS.train_batch_size,
                         limit=FLAGS.limit_train,
                         ascending=FLAGS.train_sort,
-                        next_index=lambda i: COORD.get_next_index('train'))
+                        next_index=lambda i: COORD.get_next_index('train'),
+                        is_for_train=True)
 
     # Reading validation set
     dev_set = DataSet(FLAGS.dev_files.split(','),
                       FLAGS.dev_batch_size,
                       limit=FLAGS.limit_dev,
-                      next_index=lambda i: COORD.get_next_index('dev'))
+                      next_index=lambda i: COORD.get_next_index('dev'),
+                      is_for_train=False)
 
     # Reading test set
     test_set = DataSet(FLAGS.test_files.split(','),
                        FLAGS.test_batch_size,
                        limit=FLAGS.limit_test,
-                       next_index=lambda i: COORD.get_next_index('test'))
+                       next_index=lambda i: COORD.get_next_index('test'),
+                       is_for_train=False)
 
     # Combining all sets to a multi set model feeder
     model_feeder = ModelFeeder(train_set,

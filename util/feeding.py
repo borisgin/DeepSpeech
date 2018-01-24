@@ -85,10 +85,11 @@ class DataSet(object):
     Represents a collection of audio samples and their respective transcriptions.
     Takes a set of CSV files produced by importers in /bin.
     '''
-    def __init__(self, csvs, batch_size, skip=0, limit=0, ascending=False, next_index=lambda i: i + 1, shuffle=True):
+    def __init__(self, csvs, batch_size, skip=0, limit=0, ascending=False, next_index=lambda i: i + 1, shuffle=True, is_for_train=False):
         self.batch_size = batch_size
         self.next_index = next_index
         self.files = None
+        self.is_for_train = is_for_train
         for csv in csvs:
             file = pandas.read_csv(csv, encoding='utf-8')
             if self.files is None:
@@ -153,11 +154,12 @@ class _DataSetLoader(object):
             index = self._data_set.next_index(index)
             # Reshuffle dataset after every epoch
             if index >= file_count:
-                self._data_set.files = np.random.permutation(self._data_set.files)
+                if self._data_set.is_for_train:
+                    self._data_set.files = np.random.permutation(self._data_set.files)
                 index = 0
             wav_file, transcript = self._data_set.files[index]
             source = audiofile_to_input_vector(wav_file, self._model_feeder.numcep, self._model_feeder.numcontext,
-                                               self._model_feeder.input_type)
+                                               self._model_feeder.input_type, augment=self._data_set.is_for_train)
             source_len = len(source)
             target = text_to_char_array(transcript, self._alphabet)
             target_len = len(target)
