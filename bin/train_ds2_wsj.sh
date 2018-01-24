@@ -1,5 +1,4 @@
 #!/bin/sh
-set -x
 export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:/usr/local/cuda-9.0/extras/CUPTI/lib64/:/usr/local/cuda-9.0/lib64/:$LD_LIBRARY_PATH
 
 export COMPUTE_DATA_DIR=/data/speech/WSJ
@@ -27,11 +26,15 @@ if [ ! -d "$SUMMARY_DIR" ]; then
   mkdir  ${SUMMARY_DIR}
 fi
 
+LOG_FILE=${LOG_DIR}/${EXPERIMENT}_$(date +%Y%m%d_%H%M).txt
 
-python -u DeepSpeech2.py \
-  --train_files "${COMPUTE_DATA_DIR}/wsj-train.csv" \
-  --dev_files "${COMPUTE_DATA_DIR}/wsj-dev.csv" \
-  --test_files "${COMPUTE_DATA_DIR}/wsj-test.csv" \
+echo Logging the experiment to $LOG_FILE
+
+
+CONFIG="\
+  --train_files ${COMPUTE_DATA_DIR}/wsj-train.csv \
+  --dev_files ${COMPUTE_DATA_DIR}/wsj-dev.csv \
+  --test_files ${COMPUTE_DATA_DIR}/wsj-test.csv \
   --input_type spectrogram \
   --num_audio_features 161 \
   --num_conv_layers 3 \
@@ -52,10 +55,10 @@ python -u DeepSpeech2.py \
   --validation_step 1 \
   --dropout_keep_prob 0.9 \
   --weight_decay 0.0005 \
-  --checkpoint_dir "${CHECKPOINT_DIR}" \
+  --checkpoint_dir ${CHECKPOINT_DIR} \
   --checkpoint_secs 18000 \
-  --wer_log_pattern "GLOBAL LOG: logwer('${COMPUTE_ID}', '%s', '%s', %f)"\
-  --summary_dir  "${SUMMARY_DIR}" \
+  --wer_log_pattern \"GLOBAL LOG: logwer('${COMPUTE_ID}', '%s', '%s', %f)\" \
+  --summary_dir ${SUMMARY_DIR} \
   --summary_secs 600 \
   --decoder_library_path /opt/tensorflow/bazel-bin/native_client/libctc_decoder_with_kenlm.so \
   --lm_binary_path data/lm/wsj-lm.binary \
@@ -63,4 +66,11 @@ python -u DeepSpeech2.py \
   --beam_width 64 \
   --word_count_weight 1.5 \
   --valid_word_count_weight 2.5 \
-  "$@"  2>&1 | tee ${LOG_DIR}/${EXPERIMENT}_$(date +%Y%m%d_%H%M).txt
+"
+
+echo VERSION: $(git rev-parse --short HEAD) | tee $LOG_FILE
+echo CONFIG: | tee -a $LOG_FILE
+echo $CONFIG | tee -a $LOG_FILE
+
+python -u DeepSpeech2.py $CONFIG \
+  "$@" 2>&1 | tee -a $LOG_FILE
