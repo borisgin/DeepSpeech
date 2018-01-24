@@ -57,10 +57,8 @@ CONFIG="\
   --weight_decay 0.0005 \
   --checkpoint_dir ${CHECKPOINT_DIR} \
   --checkpoint_secs 18000 \
-  --wer_log_pattern \"GLOBAL LOG: logwer('${COMPUTE_ID}', '%s', '%s', %f)\" \
   --summary_dir ${SUMMARY_DIR} \
   --summary_secs 600 \
-  --decoder_library_path /opt/tensorflow/bazel-bin/native_client/libctc_decoder_with_kenlm.so \
   --lm_binary_path data/lm/wsj-lm.binary \
   --lm_trie_path data/lm/wsj-lm.trie \
   --beam_width 64 \
@@ -73,4 +71,6 @@ echo CONFIG: | tee -a $LOG_FILE
 echo $CONFIG | tee -a $LOG_FILE
 
 python -u DeepSpeech2.py $CONFIG \
+  --wer_log_pattern "GLOBAL LOG: logwer('${COMPUTE_ID}', '%s', '%s', %f)" \
+  --decoder_library_path /opt/tensorflow/bazel-bin/native_client/libctc_decoder_with_kenlm.so \
   "$@" 2>&1 | tee -a $LOG_FILE
