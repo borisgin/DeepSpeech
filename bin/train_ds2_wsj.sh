@@ -10,7 +10,7 @@ if [ ! -f "${COMPUTE_DATA_DIR}/wsj-train.csv" ]; then
          "importer script before running this script."
 fi;
 
-export EXPERIMENT=DS2-WSJ-F161-C3x32x64x96-R1x1024-B16x8
+export EXPERIMENT=DS2-WSJ-F161-C3x32x64x96xs221-R1x256-H256-B16x8
 
 export LOG_DIR=/ds2/experiments/${EXPERIMENT}
 export CHECKPOINT_DIR=/ds2/experiments/${EXPERIMENT}/checkpoints
@@ -41,18 +41,18 @@ CONFIG="\
   --num_rnn_layers 1 \
   --rnn_cell_dim 256 \
   --rnn_type gru \
-  --n_hidden 128 \
+  --n_hidden 256 \
   --train_batch_size 16 \
   --dev_batch_size  16 \
   --test_batch_size 16 \
   --epoch 100 \
   --early_stop 0 \
   --optimizer adam \
-  --learning_rate 0.0001 \
+  --learning_rate 0.0002 \
   --decay_steps 3000 \
   --decay_rate 0.9 \
-  --display_step 10 \
-  --validation_step 1 \
+  --display_step 40 \
+  --validation_step 20 \
   --dropout_keep_prob 0.9 \
   --weight_decay 0.0005 \
   --checkpoint_dir ${CHECKPOINT_DIR} \

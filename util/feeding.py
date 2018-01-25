@@ -164,15 +164,17 @@ class _DataSetLoader(object):
             target_len = len(target)
 
             source = audiofile_to_input_vector(wav_file, self._model_feeder.numcep, self._model_feeder.numcontext,
-                                               self._model_feeder.input_type, augment=self._data_set.is_for_train)
+                                               self._model_feeder.input_type,
+                                               augment=self._data_set.is_for_train)
+                                             # augment= False)
             source_len = len(source)
 
             # TODO: move fix ctc
             min_len = target_len * self._model_feeder.reduction_factor
             if source_len < min_len:
                 numpad = (min_len - source_len) // 2
-                print('len= {} pad: {}'.format(len(source), numpad))
-                pad = np.zeros([numpad, numcep])
+                print('char_len={} audio_len={} pad={}'.format(target_len, len(source), numpad))
+                pad = np.zeros([numpad, self._model_feeder.numcep])
                 source = np.concatenate((pad, source, pad))
 
             #if source_len // self._model_feeder.reduction_factor < target_len:
