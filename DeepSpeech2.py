@@ -37,7 +37,7 @@ tf.app.flags.DEFINE_string  ('train_files',      '',          'comma separated l
 tf.app.flags.DEFINE_string  ('dev_files',        '',          'comma separated list of files specifying the dataset used for validation. multiple files will get merged')
 tf.app.flags.DEFINE_string  ('test_files',       '',          'comma separated list of files specifying the dataset used for testing. multiple files will get merged')
 tf.app.flags.DEFINE_boolean ('fulltrace',        False,       'if full trace debug info should be generated during training')
-tf.app.flags.DEFINE_string  ('train_sort',       False,       'sort training set by wave length')
+tf.app.flags.DEFINE_boolean ('train_sort',       False,       'sort training set by wave length')
 
 
 # Cluster configuration
@@ -49,7 +49,7 @@ tf.app.flags.DEFINE_string  ('job_name',         'localhost', 'job name - one of
 tf.app.flags.DEFINE_integer ('task_index',       0,           'index of task within the job - worker with index 0 will be the chief')
 tf.app.flags.DEFINE_integer ('replicas',         -1,          'total number of replicas - if negative, its absolute value is multiplied by the number of workers')
 tf.app.flags.DEFINE_integer ('replicas_to_agg',  -1,          'number of replicas to aggregate - if negative, its absolute value is multiplied by the number of workers')
-tf.app.flags.DEFINE_string  ('coord_retries',    100,         'number of tries of workers connecting to training coordinator before failing')
+tf.app.flags.DEFINE_integer ('coord_retries',    100,         'number of tries of workers connecting to training coordinator before failing')
 tf.app.flags.DEFINE_string  ('coord_host',       'localhost', 'coordination server host')
 tf.app.flags.DEFINE_integer ('coord_port',       2500,        'coordination server port')
 tf.app.flags.DEFINE_integer ('iters_per_worker', 1,           'number of train or inference iterations per worker before results are sent back to coordinator')
@@ -137,7 +137,7 @@ tf.app.flags.DEFINE_integer ('num_audio_features',  161,       'number of mfcc c
 tf.app.flags.DEFINE_integer ('num_conv_layers',  2,            'layer width to use when initialising layers')
 tf.app.flags.DEFINE_integer ('num_rnn_layers',   1,            'layer width to use when initialising layers')
 tf.app.flags.DEFINE_string  ('rnn_type',        'gru',         'rnn-cell type')
-tf.app.flags.DEFINE_string  ('rnn_cell_dim',     1024,         'rnn-cell dim')
+tf.app.flags.DEFINE_integer  ('rnn_cell_dim',     1024,         'rnn-cell dim')
 
 tf.app.flags.DEFINE_integer ('n_hidden',         1024,        'layer width to use when initialising layers')
 
