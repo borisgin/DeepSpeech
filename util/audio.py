@@ -11,7 +11,7 @@ except ImportError:
     from python_speech_features.sigproc import framesig, logpowspec, powspec
     from six.moves import range
 
-    import librosa
+    import resampy as rs
 
     class DeprecationWarning:
         displayed = False
@@ -28,13 +28,13 @@ except ImportError:
             # data augmentation
             audio_float = audio.astype(np.float32)/32768.0
 
-            # pitch (slow)
-            # pitch_amount = (np.random.rand() - 0.5)*0.5
-            # audio_float = librosa.effects.pitch_shift(audio_float, fs, pitch_amount)
+            # time stretch (might be slow)
+            stretch_amount = np.random.rand() * 0.4 + 0.8
+            audio_float = rs.resample(audio_float, fs, int(fs/stretch_amount))
 
             # noise
             noise_level_db = np.random.randint(low=-90, high=-46)
-            audio_float += np.random.randn(len(audio))*10**(noise_level_db/20.0)
+            audio_float += np.random.randn(len(audio_float))*10**(noise_level_db/20.0)
 
             audio = (audio_float*32768.0).astype(np.int16)
 
