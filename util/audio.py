@@ -30,7 +30,7 @@ except ImportError:
 
             # time stretch (might be slow)
             stretch_amount = np.random.rand() * 0.4 + 0.8
-            audio_float = rs.resample(audio_float, fs, int(fs/stretch_amount))
+            audio_float = rs.resample(audio_float, fs, int(fs/stretch_amount), filter='kaiser_fast')
 
             # noise
             noise_level_db = np.random.randint(low=-90, high=-46)
