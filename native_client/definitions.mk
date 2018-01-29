@@ -36,8 +36,8 @@ endif
 
 OS := $(shell uname -s)
 CFLAGS  += $(EXTRA_CFLAGS)
-LIBS    := -ldeepspeech -ldeepspeech_utils -ltensorflow_cc $(EXTRA_LIBS)
-LDFLAGS += -Wl,-rpath,. -L${TFDIR}/bazel-bin/tensorflow -L${TFDIR}/bazel-bin/native_client $(EXTRA_LDFLAGS) $(LIBS)
+LIBS    := -ldeepspeech -ldeepspeech_utils -ltensorflow_cc -ltensorflow_framework $(EXTRA_LIBS)
+LDFLAGS += -Wl,-rpath,. -L${TFDIR}/bazel-bin/tensorflow -L${TFDIR}/bazel-bin/native_client -L/usr/local/lib/python2.7/dist-packages/tensorflow $(EXTRA_LDFLAGS) $(LIBS)
 
 AS      := $(TOOLCHAIN)as
 CC      := $(TOOLCHAIN)gcc
