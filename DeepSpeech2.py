@@ -127,12 +127,15 @@ tf.app.flags.DEFINE_string  ('summary_dir',      '',          'target directory 
 tf.app.flags.DEFINE_integer ('summary_secs',     None,        'interval in seconds for saving TensorBoard summaries - if 0, no summaries will be written')
 tf.app.flags.DEFINE_integer ('summary_steps',    None,        'interval in steps for saving TensorBoard summaries - if 0, no summaries will be written')
 
+# Data augmentation
+tf.app.flags.DEFINE_boolean ('augment', True, 'augment training dataset')
+tf.app.flags.DEFINE_float   ('time_stretch_ratio', 0.2, '+/- time_stretch_ratio speed up / slow down')
+tf.app.flags.DEFINE_integer ('noise_level_min', -90, 'minimum level of noise, dB')
+tf.app.flags.DEFINE_integer ('noise_level_max', -46, 'maximum level of noise, dB')
+
 # Geometry
 tf.app.flags.DEFINE_string  ('input_type',         'spectrogram',       'input features type: mfcc or spectrogram')
 tf.app.flags.DEFINE_integer ('num_audio_features',  161,       'number of mfcc coefficients or spectrogram frequency bins')
-
-
-# TODO: input type: mfcc or spectrogram
 
 tf.app.flags.DEFINE_integer ('num_conv_layers',  2,            'layer width to use when initialising layers')
 tf.app.flags.DEFINE_integer ('num_rnn_layers',   1,            'layer width to use when initialising layers')
@@ -251,6 +254,10 @@ def initialize_globals():
     global input_type
     input_type = FLAGS.input_type
 
+    global augmentation_parameters
+    augmentation_parameters = {'time_stretch_ratio': FLAGS.time_stretch_ratio,
+                               'noise_level_min': FLAGS.noise_level_min,
+                               'noise_level_max': FLAGS.noise_level_max}
 
     # Number of MFCC features or spectrogram frequency bins
     global n_input
@@ -1662,21 +1669,21 @@ def train(server=None):
                         limit=FLAGS.limit_train,
                         ascending=FLAGS.train_sort,
                         next_index=lambda i: COORD.get_next_index('train'),
-                        is_for_train=True)
+                        augment=FLAGS.augment, augment_parameters=augmentation_parameters)
 
     # Reading validation set
     dev_set = DataSet(FLAGS.dev_files.split(','),
                       FLAGS.dev_batch_size,
                       limit=FLAGS.limit_dev,
                       next_index=lambda i: COORD.get_next_index('dev'),
-                      is_for_train=False)
+                      augment=False)
 
     # Reading test set
     test_set = DataSet(FLAGS.test_files.split(','),
                        FLAGS.test_batch_size,
                        limit=FLAGS.limit_test,
                        next_index=lambda i: COORD.get_next_index('test'),
-                       is_for_train=False)
+                       augment=False)
 
     # Combining all sets to a multi set model feeder
     model_feeder = ModelFeeder(train_set,

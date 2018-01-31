@@ -16,7 +16,7 @@ except ImportError:
     class DeprecationWarning:
         displayed = False
 
-    def audioToInputVector(audio, fs, numcep, numcontext, input_type='mfcc', augment=False):
+    def audioToInputVector(audio, fs, numcep, numcontext, input_type='mfcc', augment=False, augment_parameters={}):
         if DeprecationWarning.displayed is not True:
             DeprecationWarning.displayed = True
             print('------------------------------------------------------------------------', file=sys.stderr)
@@ -29,11 +29,12 @@ except ImportError:
             audio_float = audio.astype(np.float32)/32768.0
 
             # time stretch (might be slow)
-            stretch_amount = np.random.rand() * 0.4 + 0.8
+            stretch_amount = 1.0 + (2*np.random.rand()-1) * augment_parameters['time_stretch_ratio']
             audio_float = rs.resample(audio_float, fs, int(fs/stretch_amount), filter='kaiser_fast')
 
             # noise
-            noise_level_db = np.random.randint(low=-90, high=-46)
+            noise_level_db = np.random.randint(low=augment_parameters['noise_level_min'],
+                                               high=augment_parameters['noise_level_max'])
             audio_float += np.random.randn(len(audio_float))*10**(noise_level_db/20.0)
 
             audio = (audio_float*32768.0).astype(np.int16)
@@ -96,7 +97,8 @@ except ImportError:
         return train_inputs
 
 
-def audiofile_to_input_vector(audio_filename, numcep, numcontext, input_type='mfcc', augment=False):
+def audiofile_to_input_vector(audio_filename, numcep, numcontext, input_type='mfcc',
+                              augment=False, augment_parameters={}):
     r"""
     Given a WAV audio file at ``audio_filename``, calculates ``numcep`` MFCC features
     at every 0.01s time step with a window length of 0.025s. Appends ``numcontext``
@@ -106,4 +108,4 @@ def audiofile_to_input_vector(audio_filename, numcep, numcontext, input_type='mf
     # Load wav files
     fs, audio = wav.read(audio_filename)
 
-    return audioToInputVector(audio, fs, numcep, numcontext, input_type, augment)
+    return audioToInputVector(audio, fs, numcep, numcontext, input_type, augment, augment_parameters)

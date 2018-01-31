@@ -27,7 +27,7 @@ class ModelFeeder(object):
                  tower_feeder_count=-1,
                  threads_per_queue=2,
                  input_type='mfcc',
-                 reduction_factor = 1):
+                 reduction_factor=1):
 
         self.train = train_set
         self.dev = dev_set
@@ -87,11 +87,13 @@ class DataSet(object):
     Represents a collection of audio samples and their respective transcriptions.
     Takes a set of CSV files produced by importers in /bin.
     '''
-    def __init__(self, csvs, batch_size, skip=0, limit=0, ascending=False, next_index=lambda i: i + 1, shuffle=True, is_for_train=False):
+    def __init__(self, csvs, batch_size, skip=0, limit=0, ascending=False, next_index=lambda i: i + 1, shuffle=True,
+                 augment=False, augment_parameters={}):
         self.batch_size = batch_size
         self.next_index = next_index
         self.files = None
-        self.is_for_train = is_for_train
+        self.augment = augment
+        self.augment_parameters = augment_parameters
         for csv in csvs:
             file = pandas.read_csv(csv, encoding='utf-8')
             if self.files is None:
@@ -156,7 +158,7 @@ class _DataSetLoader(object):
             index = self._data_set.next_index(index)
             # Reshuffle dataset after every epoch
             if index >= file_count:
-                if self._data_set.is_for_train:
+                if self._data_set.augment:
                     self._data_set.files = np.random.permutation(self._data_set.files)
                 index = 0
             wav_file, transcript = self._data_set.files[index]
@@ -165,8 +167,9 @@ class _DataSetLoader(object):
 
             source = audiofile_to_input_vector(wav_file, self._model_feeder.numcep, self._model_feeder.numcontext,
                                                self._model_feeder.input_type,
-                                               augment=self._data_set.is_for_train)
-                                             # augment= False)
+                                               augment=self._data_set.augment,
+                                               augment_parameters=self._data_set.augment_parameters)
+
             source_len = len(source)
 
             # TODO: move fix ctc
