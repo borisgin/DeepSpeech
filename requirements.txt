@@ -1,7 +1,6 @@
 pandas
 progressbar2
 python-utils
-tensorflow
 numpy
 matplotlib
 scipy == 0.19.1

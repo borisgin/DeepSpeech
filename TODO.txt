@@ -1,9 +1,8 @@
-1. Build WSJ 3-gram LM
-2. Move all languages models from github to data
-3. Check Ryan fix for TF/CTC function
-4. Add BN after con layers and rnn layers
-5. add pooling instead of stride
-6. add shuffle after each epoch
-7. add SGD with momentum
-8. add fp16 support
+Build LS 3-gram LM
+Check Ryan fix for TF/CTC function
+Add BN to rnn layers
+reduce input size to 128
+add pooling instead of stride
+train with SGD with momentum
+fp16 support
 
