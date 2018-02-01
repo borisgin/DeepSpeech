@@ -16,6 +16,8 @@ import tensorflow as tf
 import time
 import traceback
 import inspect
+import math
+
 
 from six.moves import zip, range, filter, urllib, BaseHTTPServer
 from tensorflow.contrib.session_bundle import exporter
@@ -711,10 +713,22 @@ def calculate_mean_edit_distance_and_loss(model_feeder, tower, training):
     if FLAGS.use_warpctc:
         total_loss = tf.contrib.warpctc.warp_ctc_loss(labels=batch_y, inputs=logits, sequence_length=batch_seq_len)
     else:
-        total_loss = tf.nn.ctc_loss(labels=batch_y, inputs=logits, sequence_length=batch_seq_len, ignore_longer_outputs_than_inputs = False)
+        total_loss = tf.nn.ctc_loss(labels=batch_y, inputs=logits, sequence_length=batch_seq_len,
+                                    ignore_longer_outputs_than_inputs = True)
+
+    # check for inf and nans
+    total_zeros = tf.zeros_like(total_loss)
+    total_mask = tf.is_finite(total_loss)
+    total_loss = tf.where(total_mask, total_loss, total_zeros)
 
     # Calculate the average loss across the batch
     avg_loss = tf.reduce_mean(total_loss)
+
+    # check for inf and nans
+    #avg_zeros = tf.zeros_like(avg_loss)
+    #avg_mask = tf.is_finite(avg_loss)
+    #avg_loss = tf.where(avg_mask, avg_loss, avg_zeros)
+
 
     # Beam search decode the batch
     decoded, _ = decode_with_lm(logits, batch_seq_len, merge_repeated=False, beam_width=FLAGS.beam_width)
@@ -751,6 +765,13 @@ def create_optimizer(optimizer='adam' , lr=FLAGS.learning_rate):
 
 # Towers
 # ======
+def mask_nans(x):
+   x_zeros = tf.zeros_like(x)
+   x_mask  = tf.is_finite(x)
+   y = tf.where(x_mask, x, x_zeros)
+   return y
+
+
 
 # In order to properly make use of multiple GPU's, one must introduce new abstractions,
 # not present when using a single GPU, that facilitate the multi-GPU use case.
@@ -840,6 +861,9 @@ def get_tower_results(model_feeder, optimizer):
 
                     # Compute gradients for model parameters using tower's mini-batch
                     gradients = optimizer.compute_gradients(avg_loss)
+
+                    # mask inf and nans in gradient
+                    gradients = [(mask_nans(gv[0]), gv[1]) for gv in gradients ]
 
                     # Retain tower's gradients
                     tower_gradients.append(gradients)
@@ -1827,6 +1851,7 @@ def train(server=None):
 #                        _, current_step, batch_loss, batch_report = session.run([train_op, global_step, loss, report_params], **extra_params)
                         _, current_step, batch_loss, learn_rate, batch_report = session.run([train_op,
                                                                 global_step, loss, lr, report_params], **extra_params)
+
 
                         batch_time = time.time() - batch_time
                         session_time += batch_time
