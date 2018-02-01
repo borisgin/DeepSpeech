@@ -16,6 +16,8 @@ import tensorflow as tf
 import time
 import traceback
 import inspect
+import math
+
 
 from six.moves import zip, range, filter, urllib, BaseHTTPServer
 from tensorflow.contrib.session_bundle import exporter
@@ -276,7 +278,7 @@ def initialize_globals():
 
     conv_layers = [
         {'kernel_size': [11,41], 'stride': [2,2], 'num_channels': 32, 'padding': 'SAME' },
-        {'kernel_size': [11,21], 'stride': [2,2], 'num_channels': 64, 'padding': 'SAME' },
+        {'kernel_size': [11,21], 'stride': [1,2], 'num_channels': 64, 'padding': 'SAME' },
         {'kernel_size': [11,21], 'stride': [1,2], 'num_channels': 96, 'padding': 'SAME'}
     ]
     '''
@@ -692,6 +694,12 @@ def decode_with_lm(inputs, sequence_length, beam_width=128,
        in zip(decoded_ixs, decoded_vals, decoded_shapes)],
       log_probabilities)
 
+
+def mask_nans(x):
+   x_zeros = tf.zeros_like(x)
+   x_mask  = tf.is_finite(x)
+   y = tf.where(x_mask, x, x_zeros)
+   return y
 # Accuracy and Loss
 # =================
 
@@ -718,7 +726,11 @@ def calculate_mean_edit_distance_and_loss(model_feeder, tower, training):
     if FLAGS.use_warpctc:
         total_loss = tf.contrib.warpctc.warp_ctc_loss(labels=batch_y, inputs=logits, sequence_length=batch_seq_len)
     else:
-        total_loss = tf.nn.ctc_loss(labels=batch_y, inputs=logits, sequence_length=batch_seq_len, ignore_longer_outputs_than_inputs = False)
+        total_loss = tf.nn.ctc_loss(labels=batch_y, inputs=logits, sequence_length=batch_seq_len,
+                                    ignore_longer_outputs_than_inputs = True)
+
+    # check for inf and nans
+    total_loss = mask_nans(total_loss)
 
     # Calculate the average loss across the batch
     avg_loss = tf.reduce_mean(total_loss)
@@ -847,6 +859,9 @@ def get_tower_results(model_feeder, optimizer):
 
                     # Compute gradients for model parameters using tower's mini-batch
                     gradients = optimizer.compute_gradients(avg_loss)
+
+                    # mask inf and nans in gradient
+                    gradients = [(mask_nans(gv[0]), gv[1]) for gv in gradients ]
 
                     # Retain tower's gradients
                     tower_gradients.append(gradients)
@@ -1834,6 +1849,7 @@ def train(server=None):
 #                        _, current_step, batch_loss, batch_report = session.run([train_op, global_step, loss, report_params], **extra_params)
                         _, current_step, batch_loss, learn_rate, batch_report = session.run([train_op,
                                                                 global_step, loss, lr, report_params], **extra_params)
+
 
                         batch_time = time.time() - batch_time
                         session_time += batch_time
