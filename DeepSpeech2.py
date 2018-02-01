@@ -271,7 +271,7 @@ def initialize_globals():
 
     conv_layers = [
         {'kernel_size': [11,41], 'stride': [2,2], 'num_channels': 32, 'padding': 'SAME' },
-        {'kernel_size': [11,21], 'stride': [2,2], 'num_channels': 64, 'padding': 'SAME' },
+        {'kernel_size': [11,21], 'stride': [1,2], 'num_channels': 64, 'padding': 'SAME' },
         {'kernel_size': [11,21], 'stride': [1,2], 'num_channels': 96, 'padding': 'SAME'}
     ]
     '''
@@ -687,6 +687,12 @@ def decode_with_lm(inputs, sequence_length, beam_width=128,
        in zip(decoded_ixs, decoded_vals, decoded_shapes)],
       log_probabilities)
 
+
+def mask_nans(x):
+   x_zeros = tf.zeros_like(x)
+   x_mask  = tf.is_finite(x)
+   y = tf.where(x_mask, x, x_zeros)
+   return y
 # Accuracy and Loss
 # =================
 
@@ -717,18 +723,10 @@ def calculate_mean_edit_distance_and_loss(model_feeder, tower, training):
                                     ignore_longer_outputs_than_inputs = True)
 
     # check for inf and nans
-    total_zeros = tf.zeros_like(total_loss)
-    total_mask = tf.is_finite(total_loss)
-    total_loss = tf.where(total_mask, total_loss, total_zeros)
+    total_loss = mask_nans(total_loss)
 
     # Calculate the average loss across the batch
     avg_loss = tf.reduce_mean(total_loss)
-
-    # check for inf and nans
-    #avg_zeros = tf.zeros_like(avg_loss)
-    #avg_mask = tf.is_finite(avg_loss)
-    #avg_loss = tf.where(avg_mask, avg_loss, avg_zeros)
-
 
     # Beam search decode the batch
     decoded, _ = decode_with_lm(logits, batch_seq_len, merge_repeated=False, beam_width=FLAGS.beam_width)
@@ -765,13 +763,6 @@ def create_optimizer(optimizer='adam' , lr=FLAGS.learning_rate):
 
 # Towers
 # ======
-def mask_nans(x):
-   x_zeros = tf.zeros_like(x)
-   x_mask  = tf.is_finite(x)
-   y = tf.where(x_mask, x, x_zeros)
-   return y
-
-
 
 # In order to properly make use of multiple GPU's, one must introduce new abstractions,
 # not present when using a single GPU, that facilitate the multi-GPU use case.
