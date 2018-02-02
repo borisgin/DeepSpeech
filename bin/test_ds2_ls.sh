@@ -1,14 +1,7 @@
-#!/bin/sh
+#!/bin/bash
 export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:/usr/local/cuda-9.0/extras/CUPTI/lib64/:/usr/local/cuda-9.0/lib64/:$LD_LIBRARY_PATH
 
-export COMPUTE_DATA_DIR=/raid/DATA/SPEECH/LibriSpeech
-# Warn if we can't find the train files
-if [ ! -f "${COMPUTE_DATA_DIR}/wsj-train.csv" ]; then
-    echo "Warning: It looks like you don't have the Switchboard corpus"       \
-         "downloaded and preprocessed. Make sure \$COMPUTE_DATA_DIR points to the" \
-         "folder where the Switchboard data is located, and that you ran the" \
-         "importer script before running this script."
-fi;
+export COMPUTE_DATA_DIR=/data/speech/LibriSpeech
 
 export EXPERIMENT=DS2-LS-F161-C32x64-R1x512-H512-B64x4-AUG-NT
 
@@ -48,7 +41,7 @@ CONFIG="\
   --train 0 \
   --train_batch_size 2 \
   --dev_batch_size  2 \
-  --test_batch_size 32 \
+  --test_batch_size 64 \
   --learning_rate 0 \
   --display_step 1 \
   --validation_step 1 \
@@ -58,8 +51,8 @@ CONFIG="\
   --checkpoint_secs 18000 \
   --summary_dir ${SUMMARY_DIR} \
   --summary_secs 600 \
-  --lm_binary_path /root/deepspeech/data/lm/lm.binary \
-  --lm_trie_path /root/deepspeech/data/lm/trie \
+  --lm_binary_path /data/speech/LM/ls-n3-lm.binary \
+  --lm_trie_path /data/speech/LM/ls-n3-lm.trie \
   --beam_width 1024 \
   --lm_weight 1.75 \
   --word_count_weight 1.0 \
@@ -70,7 +63,7 @@ echo VERSION: $(git rev-parse --short HEAD) | tee $LOG_FILE
 echo CONFIG: | tee -a $LOG_FILE
 echo $CONFIG | tee -a $LOG_FILE
 
-python -u DeepSpeech2.py $CONFIG \
+time python -u DeepSpeech2.py $CONFIG \
   --wer_log_pattern "GLOBAL LOG: logwer('${COMPUTE_ID}', '%s', '%s', %f)" \
   --decoder_library_path /opt/tensorflow/bazel-bin/native_client/libctc_decoder_with_kenlm.so \
   "$@" 2>&1 | tee -a $LOG_FILE

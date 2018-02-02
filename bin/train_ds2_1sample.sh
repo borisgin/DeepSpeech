@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:/usr/local/cuda-9.0/extras/CUPTI/lib64/:/usr/local/cuda-9.0/lib64/:$LD_LIBRARY_PATH
 
 if [ ! -f DeepSpeech.py ]; then
@@ -60,8 +60,8 @@ CONFIG="\
   --checkpoint_secs 18000 \
   --summary_dir ${SUMMARY_DIR} \
   --summary_secs 600 \
-  --lm_binary_path data/lm/wsj-lm.binary \
-  --lm_trie_path data/lm/wsj-lm.trie \
+  --lm_binary_path /data/speech/LM/wsj-lm.binary \
+  --lm_trie_path /data/speech/LM/wsj-lm.trie \
   --beam_width 64 \
   --word_count_weight 1.5 \
   --valid_word_count_weight 2.5 \
@@ -71,7 +71,7 @@ echo VERSION: $(git rev-parse --short HEAD) | tee $LOG_FILE
 echo CONFIG: | tee -a $LOG_FILE
 echo $CONFIG | tee -a $LOG_FILE
 
-python -u DeepSpeech2.py $CONFIG \
+time python -u DeepSpeech2.py $CONFIG \
   --wer_log_pattern "GLOBAL LOG: logwer('${COMPUTE_ID}', '%s', '%s', %f)" \
   --decoder_library_path /opt/tensorflow/bazel-bin/native_client/libctc_decoder_with_kenlm.so \
   "$@" 2>&1 | tee -a $LOG_FILE
