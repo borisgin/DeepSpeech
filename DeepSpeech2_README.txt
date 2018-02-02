@@ -31,6 +31,16 @@ bazel-bin/tensorflow/tools/pip_package/build_pip_package /tmp/tensorflow_pkg
 sudo pip install /tmp/tensorflow_pkg/*.whl
 # make sure that pip points to python2
 
+===== KenLM ============================================================
+
+sudo apt-get install -y cmake libeigen3-dev libboost-dev libboost-program-options-dev libboost-system-dev  libboost-thread-dev libboost-test-dev libbz2-dev liblzma-dev
+cd /opt
+git clone https://github.com/kpe/kenlm
+mkdir /opt/kenlm/build
+cd /opt/kenlm/build
+cmake ..
+make
+
 ===== DeepSpeech 2 =====================================================
 
 export LD_LIBRARY_PATH=/usr/local/lib/python2.7/dist-packages/tensorflow:$LD_LIBRARY_PATH
