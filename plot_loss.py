@@ -1,4 +1,6 @@
+#!/usr/bin/python
 import numpy as np
+import six
 import os
 import matplotlib.pyplot as plt
 from matplotlib import colors
@@ -12,6 +14,7 @@ def parse_log(log):
         data = f.readlines()
         for line in data:
             line = line.replace(',', '')
+            line = six.u(line)
             if 'Training' in line:
                 if 'WER' in line:
                     epoch, _, loss, _ = [float(w) for w in line.split() if w[0].isnumeric()]
