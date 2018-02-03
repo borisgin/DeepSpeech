@@ -1,9 +1,9 @@
 #!/bin/sh
 export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:/usr/local/cuda-9.0/extras/CUPTI/lib64/:/usr/local/cuda-9.0/lib64/:$LD_LIBRARY_PATH
 
-export COMPUTE_DATA_DIR=/data/speech/librispeech
+export COMPUTE_DATA_DIR=/data/speech/LibriSpeech
 
-export EXPERIMENT=DS2-LS-F161-C3x32x64x96xs221-R1x256-H256-B16x8
+export EXPERIMENT=DS2-LS-F161-C3x32x64x96xs221-R1x256-H256-B16x8_drop0.5_aug
 
 export LOG_DIR=experiments/${EXPERIMENT}
 export CHECKPOINT_DIR=experiments/${EXPERIMENT}/checkpoints
@@ -35,25 +35,25 @@ CONFIG="\
   --rnn_cell_dim 256 \
   --rnn_type gru \
   --n_hidden 256 \
-  --train_batch_size 64 \
+  --train_batch_size 16 \
   --dev_batch_size  16 \
   --test_batch_size 16 \
-  --epoch 800 \
+  --epoch 100 \
   --early_stop 0 \
   --optimizer adam \
   --learning_rate 0.0002 \
-  --decay_steps 500 \
+  --decay_steps 5000 \
   --decay_rate 0.9 \
-  --display_step 100 \
-  --validation_step 200 \
-  --dropout_keep_prob 0.9 \
+  --display_step 10 \
+  --validation_step 5 \
+  --dropout_keep_prob 0.5 \
   --weight_decay 0.0005 \
   --checkpoint_dir ${CHECKPOINT_DIR} \
   --checkpoint_secs 18000 \
   --summary_dir ${SUMMARY_DIR} \
   --summary_secs 600 \
-  --lm_binary_path data/lm/wsj-lm.binary \
-  --lm_trie_path data/lm/wsj-lm.trie \
+  --lm_binary_path /data/speech/LM/mozilla-lm.binary \
+  --lm_trie_path /data/speech/LM/mozilla-lm.trie \
   --beam_width 64 \
   --word_count_weight 1.5 \
   --valid_word_count_weight 2.5 \
