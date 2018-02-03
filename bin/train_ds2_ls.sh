@@ -7,8 +7,8 @@ export COMPUTE_DATA_DIR=/data/speech/LibriSpeech
 export EXPERIMENT=DS2-LS-F161-C32x64-R1x512-H512-B64x8-AUG-NT
 
 export LOG_DIR=/ds2/experiments/${EXPERIMENT}
-export CHECKPOINT_DIR=/ds2/experiments/${EXPERIMENT}/checkpoints
-export SUMMARY_DIR=/ds2/experiments/${EXPERIMENT}/summary
+export CHECKPOINT_DIR=${LOG_DIR}/checkpoints
+export SUMMARY_DIR=${LOG_DIR}/summary
 
 if [ ! -d "$LOG_DIR" ]; then
   mkdir  ${LOG_DIR}

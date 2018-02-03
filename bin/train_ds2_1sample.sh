@@ -14,8 +14,8 @@ fi;
 export EXPERIMENT=DS2-1SAMPLE
 export LM_DIR=/data/speech/LM
 export LOG_DIR=/ds2/experiments/${EXPERIMENT}
-export CHECKPOINT_DIR=/ds2/experiments/${EXPERIMENT}/checkpoints
-export SUMMARY_DIR=/ds2/experiments/${EXPERIMENT}/summary
+export CHECKPOINT_DIR=${LOG_DIR}/checkpoints
+export SUMMARY_DIR=${LOG_DIR}/summary
 
 if [ ! -d "$LOG_DIR" ]; then
   mkdir  ${LOG_DIR}

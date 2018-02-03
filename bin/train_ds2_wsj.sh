@@ -12,10 +12,9 @@ if [ ! -f "${COMPUTE_DATA_DIR}/wsj-train.csv" ]; then
 fi;
 
 export EXPERIMENT=DS2-WSJ-F161-C3x32x64x96xs221-R1x256-H256-B16x8
-
 export LOG_DIR=/ds2/experiments/${EXPERIMENT}
-export CHECKPOINT_DIR=/ds2/experiments/${EXPERIMENT}/checkpoints
-export SUMMARY_DIR=/ds2/experiments/${EXPERIMENT}/summary
+export CHECKPOINT_DIR=${LOG_DIR}/checkpoints
+export SUMMARY_DIR=${LOG_DIR}/summary
 
 if [ ! -d "$LOG_DIR" ]; then
   mkdir  ${LOG_DIR}
