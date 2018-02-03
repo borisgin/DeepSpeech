@@ -31,7 +31,6 @@ from util.text import sparse_tensor_value_to_texts, wer, Alphabet, ndarray_to_te
 from xdg import BaseDirectory as xdg
 import numpy as np
 
-
 # Importer
 # ========
 
@@ -62,8 +61,6 @@ tf.app.flags.DEFINE_integer ('iters_per_worker', 1,           'number of train o
 tf.app.flags.DEFINE_boolean ('train',            True,        'wether to train the network')
 tf.app.flags.DEFINE_boolean ('test',             True,        'wether to test the network')
 tf.app.flags.DEFINE_integer ('epoch',            100,         'target epoch to train - if negative, the absolute number of additional epochs will be trained')
-
-tf.app.flags.DEFINE_boolean ('use_warpctc',      False,       'wether to use GPU bound Warp-CTC')
 
 tf.app.flags.DEFINE_float   ('dropout_keep_prob',  1.00,        'dropout keep probability')
 
@@ -719,14 +716,11 @@ def calculate_mean_edit_distance_and_loss(model_feeder, tower, training):
 
     # Calculate the logits of the batch using BiRNN
  #   logits, batch_seq_len = DeepSpeech2(batch_x, tf.to_int64(batch_seq_len), dropout)
- #   logits, batch_seq_len = DeepSpeech2(batch_x, tf.to_int32(batch_seq_len), dropout)
+
     logits, batch_seq_len = DeepSpeech2(batch_x, batch_seq_len, training=training)
 
-    # Compute the CTC loss using either TensorFlow's `ctc_loss` or Baidu's `warp_ctc_loss`.
-    if FLAGS.use_warpctc:
-        total_loss = tf.contrib.warpctc.warp_ctc_loss(labels=batch_y, inputs=logits, sequence_length=batch_seq_len)
-    else:
-        total_loss = tf.nn.ctc_loss(labels=batch_y, inputs=logits, sequence_length=batch_seq_len,
+    # Compute the CTC loss
+    total_loss = tf.nn.ctc_loss(labels=batch_y, inputs=logits, sequence_length=batch_seq_len,
                                     ignore_longer_outputs_than_inputs = True)
 
     # check for inf and nans
