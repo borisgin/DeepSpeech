@@ -12,7 +12,7 @@ if [ ! -f "data/ldc93s1/ldc93s1.csv" ]; then
 fi;
 
 export EXPERIMENT=DS2-1SAMPLE
-
+export LM_DIR=/data/speech/LM
 export LOG_DIR=/ds2/experiments/${EXPERIMENT}
 export CHECKPOINT_DIR=/ds2/experiments/${EXPERIMENT}/checkpoints
 export SUMMARY_DIR=/ds2/experiments/${EXPERIMENT}/summary
@@ -60,8 +60,8 @@ CONFIG="\
   --checkpoint_secs 18000 \
   --summary_dir ${SUMMARY_DIR} \
   --summary_secs 600 \
-  --lm_binary_path /data/speech/LM/wsj-lm.binary \
-  --lm_trie_path /data/speech/LM/wsj-lm.trie \
+  --lm_binary_path ${LM_DIR}/wsj-lm.binary \
+  --lm_trie_path ${LM_DIR}/wsj-lm.trie \
   --beam_width 64 \
   --word_count_weight 1.5 \
   --valid_word_count_weight 2.5 \

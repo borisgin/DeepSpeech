@@ -1,6 +1,7 @@
 #!/bin/bash
 export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:/usr/local/cuda-9.0/extras/CUPTI/lib64/:/usr/local/cuda-9.0/lib64/:$LD_LIBRARY_PATH
 
+export LM_DIR=/data/speech/LM
 export COMPUTE_DATA_DIR=/data/speech/LibriSpeech
 
 export EXPERIMENT=DS2-LS-F161-C32x64-R1x512-H512-B64x8-AUG-NT
@@ -52,8 +53,8 @@ CONFIG="\
   --checkpoint_secs 18000 \
   --summary_dir ${SUMMARY_DIR} \
   --summary_secs 600 \
-  --lm_binary_path /data/speech/LM/ls-n3-lm.binary \
-  --lm_trie_path /data/speech/LM/ls-n3-lm.trie \
+  --lm_binary_path $LM_DIR/ls-n3-lm.binary \
+  --lm_trie_path $LM_DIR/ls-n3-lm.trie \
   --beam_width 64 \
   --word_count_weight 1.5 \
   --valid_word_count_weight 2.5 \
