@@ -2,12 +2,13 @@
 export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:/usr/local/cuda-9.0/extras/CUPTI/lib64/:/usr/local/cuda-9.0/lib64/:$LD_LIBRARY_PATH
 
 export COMPUTE_DATA_DIR=/data/speech/LibriSpeech
+export LM_DIR=/data/speech/LM
 
 export EXPERIMENT=DS2-LS-F161-C3x32x64x96xs221-R1x256-H256-B16x8_drop0.5_aug
 
-export LOG_DIR=experiments/${EXPERIMENT}
-export CHECKPOINT_DIR=experiments/${EXPERIMENT}/checkpoints
-export SUMMARY_DIR=experiments/${EXPERIMENT}/summary
+export LOG_DIR=/ds2/experiments/${EXPERIMENT}
+export CHECKPOINT_DIR=${LOG_DIR}/checkpoints
+export SUMMARY_DIR=${LOG_DIR}/summary
 
 if [ ! -d "$LOG_DIR" ]; then
   mkdir  ${LOG_DIR}
@@ -19,10 +20,10 @@ if [ ! -d "$SUMMARY_DIR" ]; then
   mkdir  ${SUMMARY_DIR}
 fi
 
+cp bin/train_librispeech.sh  ${LOG_DIR}
+
 LOG_FILE=${LOG_DIR}/${EXPERIMENT}_$(date +%Y%m%d_%H%M).txt
-
 echo Logging the experiment to $LOG_FILE
-
 
 CONFIG="\
   --train_files ${COMPUTE_DATA_DIR}/librivox-train-clean-100.csv,${COMPUTE_DATA_DIR}/librivox-train-clean-360.csv,${COMPUTE_DATA_DIR}/librivox-train-other-500.csv \
@@ -52,8 +53,8 @@ CONFIG="\
   --checkpoint_secs 18000 \
   --summary_dir ${SUMMARY_DIR} \
   --summary_secs 600 \
-  --lm_binary_path /data/speech/LM/mozilla-lm.binary \
-  --lm_trie_path /data/speech/LM/mozilla-lm.trie \
+  --lm_binary_path ${LM_DIR}/mozilla-lm.binary \
+  --lm_trie_path ${LM_DIR}/mozilla-lm.trie \
   --beam_width 64 \
   --word_count_weight 1.5 \
   --valid_word_count_weight 2.5 \
