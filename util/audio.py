@@ -16,7 +16,7 @@ except ImportError:
     class DeprecationWarning:
         displayed = False
 
-    def audioToInputVector(audio, fs, numcep, numcontext, input_type='mfcc', augment=False, augment_parameters={}):
+    def audioToInputVector(audio, fs, numcep, numcontext, input_type='mfcc', augmentation=None):
         if DeprecationWarning.displayed is not True:
             DeprecationWarning.displayed = True
             print('------------------------------------------------------------------------', file=sys.stderr)
@@ -24,17 +24,18 @@ except ImportError:
                   file=sys.stderr)
             print('------------------------------------------------------------------------', file=sys.stderr)
 
-        if augment:
+        if augmentation is not None:
             # data augmentation
             audio_float = audio.astype(np.float32)/32768.0
 
-            # time stretch (might be slow)
-            stretch_amount = 1.0 + (2*np.random.rand()-1) * augment_parameters['time_stretch_ratio']
-            audio_float = rs.resample(audio_float, fs, int(fs/stretch_amount), filter='kaiser_fast')
+            if augmentation['time_stretch_ratio'] > 0:
+                # time stretch (might be slow)
+                stretch_amount = 1.0 + (2*np.random.rand()-1) * augmentation['time_stretch_ratio']
+                audio_float = rs.resample(audio_float, fs, int(fs/stretch_amount), filter='kaiser_fast')
 
             # noise
-            noise_level_db = np.random.randint(low=augment_parameters['noise_level_min'],
-                                               high=augment_parameters['noise_level_max'])
+            noise_level_db = np.random.randint(low=augmentation['noise_level_min'],
+                                               high=augmentation['noise_level_max'])
             audio_float += np.random.randn(len(audio_float))*10**(noise_level_db/20.0)
 
             audio = (audio_float*32768.0).astype(np.int16)
@@ -98,7 +99,7 @@ except ImportError:
 
 
 def audiofile_to_input_vector(audio_filename, numcep, numcontext, input_type='mfcc',
-                              augment=False, augment_parameters={}):
+                              augmentation=None):
     r"""
     Given a WAV audio file at ``audio_filename``, calculates ``numcep`` MFCC features
     at every 0.01s time step with a window length of 0.025s. Appends ``numcontext``
@@ -108,4 +109,4 @@ def audiofile_to_input_vector(audio_filename, numcep, numcontext, input_type='mf
     # Load wav files
     fs, audio = wav.read(audio_filename)
 
-    return audioToInputVector(audio, fs, numcep, numcontext, input_type, augment, augment_parameters)
+    return audioToInputVector(audio, fs, numcep, numcontext, input_type, augmentation)

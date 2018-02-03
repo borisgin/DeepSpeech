@@ -1,16 +1,17 @@
 #!/bin/bash
 export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:/usr/local/cuda-9.0/extras/CUPTI/lib64/:/usr/local/cuda-9.0/lib64/:$LD_LIBRARY_PATH
 
-export COMPUTE_DATA_DIR=/data/speech/WSJ
-# Warn if we can't find the train files
-if [ ! -f "${COMPUTE_DATA_DIR}/wsj-train.csv" ]; then
-    echo "Warning: It looks like you don't have the Switchboard corpus"       \
-         "downloaded and preprocessed. Make sure \$COMPUTE_DATA_DIR points to the" \
-         "folder where the Switchboard data is located, and that you ran the" \
-         "importer script before running this script."
+if [ ! -f DeepSpeech.py ]; then
+    echo "Please make sure you run this from DeepSpeech's top level directory."
+    exit 1
 fi;
 
-export EXPERIMENT=DS2-WSJ-F161-C3x32x64x96xs221-R1x256-H256-B16x8
+if [ ! -f "data/ldc93s1/ldc93s1.csv" ]; then
+    echo "Downloading and preprocessing LDC93S1 example data, saving in ./data/ldc93s1."
+    python -u bin/import_ldc93s1.py ./data/ldc93s1
+fi;
+
+export EXPERIMENT=DS2-1SAMPLE
 
 export LOG_DIR=/ds2/experiments/${EXPERIMENT}
 export CHECKPOINT_DIR=/ds2/experiments/${EXPERIMENT}/checkpoints
@@ -32,19 +33,19 @@ echo Logging the experiment to $LOG_FILE
 
 
 CONFIG="\
-  --train_files ${COMPUTE_DATA_DIR}/wsj-train.csv \
-  --dev_files ${COMPUTE_DATA_DIR}/wsj-dev.csv \
-  --test_files ${COMPUTE_DATA_DIR}/wsj-test.csv \
+  --train_files data/ldc93s1/ldc93s1.csv \
+  --dev_files data/ldc93s1/ldc93s1.csv \
+  --test_files data/ldc93s1/ldc93s1.csv \
   --input_type spectrogram \
   --num_audio_features 161 \
-  --num_conv_layers 3 \
+  --num_conv_layers 2 \
   --num_rnn_layers 1 \
   --rnn_cell_dim 256 \
   --rnn_type gru \
   --n_hidden 256 \
-  --train_batch_size 16 \
-  --dev_batch_size  16 \
-  --test_batch_size 16 \
+  --train_batch_size 1 \
+  --dev_batch_size  1 \
+  --test_batch_size 1 \
   --epoch 100 \
   --early_stop 0 \
   --optimizer adam \
@@ -59,8 +60,8 @@ CONFIG="\
   --checkpoint_secs 18000 \
   --summary_dir ${SUMMARY_DIR} \
   --summary_secs 600 \
-  --lm_binary_path data/lm/wsj-lm.binary \
-  --lm_trie_path data/lm/wsj-lm.trie \
+  --lm_binary_path /data/speech/LM/wsj-lm.binary \
+  --lm_trie_path /data/speech/LM/wsj-lm.trie \
   --beam_width 64 \
   --word_count_weight 1.5 \
   --valid_word_count_weight 2.5 \

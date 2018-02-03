@@ -10,7 +10,7 @@ if [ ! -f "${COMPUTE_DATA_DIR}/wsj-train.csv" ]; then
          "importer script before running this script."
 fi;
 
-export EXPERIMENT=DS2-WSJ-F161-C3x32x64x96xs221-R1x256-H256-B16x8
+export EXPERIMENT=DS2-WSJ-128
 
 export LOG_DIR=/ds2/experiments/${EXPERIMENT}
 export CHECKPOINT_DIR=/ds2/experiments/${EXPERIMENT}/checkpoints
@@ -32,12 +32,12 @@ echo Logging the experiment to $LOG_FILE
 
 
 CONFIG="\
-  --train_files ${COMPUTE_DATA_DIR}/wsj-train.csv \
-  --dev_files ${COMPUTE_DATA_DIR}/wsj-dev.csv \
-  --test_files ${COMPUTE_DATA_DIR}/wsj-test.csv \
+  --train_files data/wsj-sample/wsj-train-128.csv \
+  --dev_files data/wsj-sample/wsj-train-128.csv \
+  --test_files data/wsj-sample/wsj-train-128.csv \
   --input_type spectrogram \
   --num_audio_features 161 \
-  --num_conv_layers 3 \
+  --num_conv_layers 2 \
   --num_rnn_layers 1 \
   --rnn_cell_dim 256 \
   --rnn_type gru \

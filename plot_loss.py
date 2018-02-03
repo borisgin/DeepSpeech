@@ -1,4 +1,6 @@
+#!/usr/bin/python
 import numpy as np
+import six
 import os
 import matplotlib.pyplot as plt
 from matplotlib import colors
@@ -12,6 +14,7 @@ def parse_log(log):
         data = f.readlines()
         for line in data:
             line = line.replace(',', '')
+            line = six.u(line)
             if 'Training' in line:
                 if 'WER' in line:
                     epoch, _, loss, _ = [float(w) for w in line.split() if w[0].isnumeric()]
@@ -45,11 +48,14 @@ def plot_logs(logs):
     legend = []
     for idx, trace in enumerate(data):
         color = COLORS[idx]
-        plt.plot(trace[0][:, 0], trace[0][:, 1], '-', color=color)
-        plt.plot(trace[1][:, 0], trace[1][:, 1], '.-', color=color)
         log_name = os.path.basename(logs[idx])
-        legend += ['Training, {}'.format(log_name),
-                   'Validation, {}'.format(log_name)]
+        if trace[0].size > 0:
+            plt.plot(trace[0][:,0], trace[0][:,1], '-', color=color)
+            legend.append('Training, {}'.format(log_name)) 
+        if trace[1].size > 0:
+            plt.plot(trace[1][:,0], trace[1][:,1], '.-', color=color)
+            legend.append('Validation, {}'.format(log_name))
+
     plt.legend(legend)
     plt.title('Deep Speech')
     plt.ylabel('Loss')

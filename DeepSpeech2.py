@@ -1678,21 +1678,24 @@ def train(server=None):
                         limit=FLAGS.limit_train,
                         ascending=FLAGS.train_sort,
                         next_index=lambda i: COORD.get_next_index('train'),
-                        augment=FLAGS.augment, augment_parameters=augmentation_parameters)
+                        shuffle=True,
+                        augmentation=augmentation_parameters if FLAGS.augment else None)
 
     # Reading validation set
     dev_set = DataSet(FLAGS.dev_files.split(','),
                       FLAGS.dev_batch_size,
                       limit=FLAGS.limit_dev,
                       next_index=lambda i: COORD.get_next_index('dev'),
-                      augment=False)
+                      shuffle=False,
+                      augmentation=None)
 
     # Reading test set
     test_set = DataSet(FLAGS.test_files.split(','),
                        FLAGS.test_batch_size,
                        limit=FLAGS.limit_test,
                        next_index=lambda i: COORD.get_next_index('test'),
-                       augment=False)
+                       shuffle=False,
+                       augmentation=None)
 
     # Combining all sets to a multi set model feeder
     model_feeder = ModelFeeder(train_set,
