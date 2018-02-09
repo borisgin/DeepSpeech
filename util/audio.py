@@ -41,7 +41,8 @@ except ImportError:
             audio = (audio_float*32768.0).astype(np.int16)
 
         if input_type == 'spectrogram':
-            assert numcep % 2 == 1, "m_input shouldn't be even for spectrogram"
+           # assert numcep % 2 == 1, "m_input shouldn't be even for spectrogram"
+
             frames = framesig(sig=audio,
                               frame_len=int(fs*0.020),
                               frame_step=int(fs*0.010),
@@ -49,7 +50,12 @@ except ImportError:
 
             # TODO: try log(1+powspec)
             # train_inputs = np.log1p(powspec(frames, NFFT=(numcep-1)*2))
-            train_inputs = logpowspec(frames, NFFT=(numcep-1)*2)
+           # train_inputs = logpowspec(frames, NFFT=(numcep-1)*2)
+            nfft=int(fs*0.020)
+            train_inputs = logpowspec(frames, NFFT=nfft)
+            numcep = min(nfft // 2 + 1,numcep)
+            train_inputs = train_inputs[...,:numcep]
+
         elif input_type == 'mfcc':
             # Get mfcc coefficients
             #features = mfcc(audio, samplerate=fs, numcep=numcep)
