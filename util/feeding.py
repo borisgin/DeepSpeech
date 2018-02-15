@@ -94,24 +94,29 @@ class DataSet(object):
         self.files = None
         self.shuffle = shuffle
         self.augmentation = augmentation
+        self.num_samples=0
         for csv in csvs:
             file = pandas.read_csv(csv, encoding='utf-8')
+            num_records = file.shape[0]
+            self.num_samples = self.num_samples + num_records
+            print("Dataset size={}".format(self.num_samples))
             if self.files is None:
                 self.files = file
             else:
                 self.files = self.files.append(file)
         if ascending:
             self.files = self.files.sort_values(by="wav_filesize", ascending=ascending) \
-                         .ix[:, ["wav_filename", "transcript"]] \
+                         .loc[:, ["wav_filename", "transcript"]] \
                          .values[skip:]
         else:
-            self.files = self.files.ix[:, ["wav_filename", "transcript"]] \
+            self.files = self.files.loc[:, ["wav_filename", "transcript"]] \
                          .values[skip:]
         if limit > 0:
             self.files = self.files[:limit]
         if shuffle:
             self.files = np.random.permutation(self.files)
         self.total_batches = int(ceil(len(self.files) / batch_size))
+
 
 class _DataSetLoader(object):
     '''
@@ -174,7 +179,7 @@ class _DataSetLoader(object):
             # TODO: move fix ctc
             min_len = target_len * self._model_feeder.reduction_factor
             if source_len < min_len:
-                numpad = (min_len - source_len) // 2
+                numpad = (min_len + 1 - source_len) // 2
                 print('char_len={} audio_len={} pad={}'.format(target_len, len(source), numpad))
                 pad = np.zeros([numpad, self._model_feeder.numcep])
                 source = np.concatenate((pad, source, pad))

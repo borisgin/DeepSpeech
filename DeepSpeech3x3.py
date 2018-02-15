@@ -8,6 +8,10 @@ import sys
 log_level_index = sys.argv.index('--log_level') + 1 if '--log_level' in sys.argv else 0
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = sys.argv[log_level_index] if log_level_index > 0 and log_level_index < len(sys.argv) else '3'
 
+import warnings
+warnings.filterwarnings("ignore", message="numpy.dtype size changed")
+warnings.filterwarnings("ignore", message="The binary mode of fromstring is deprecated")
+
 import datetime
 import pickle
 import shutil
@@ -29,6 +33,7 @@ from util.gpu import get_available_gpus
 from util.shared_lib import check_cupti
 from util.text import sparse_tensor_value_to_texts, wer, Alphabet, ndarray_to_text, levenshtein
 from xdg import BaseDirectory as xdg
+
 import numpy as np
 
 # Importer
@@ -71,11 +76,12 @@ tf.app.flags.DEFINE_string  ('optimizer',        'adam',      'optimizer type: a
 tf.app.flags.DEFINE_float   ('beta1',            0.9,         'beta 1 parameter of Adam optimizer')
 tf.app.flags.DEFINE_float   ('beta2',            0.999,       'beta 2 parameter of Adam optimizer')
 tf.app.flags.DEFINE_float   ('epsilon',          1e-8,        'epsilon parameter of Adam optimizer')
-tf.app.flags.DEFINE_float   ('learning_rate',    0.0001,       'learning rate of Adam optimizer')
+tf.app.flags.DEFINE_float   ('learning_rate',    0.0001,      'base_learning rate')
 
-# SGD with momentum optimizer
+tf.app.flags.DEFINE_string   ('lr_decay_policy',  'exp',    'learning rate decay policy')
 tf.app.flags.DEFINE_integer ('decay_steps',      0,           'number of LR decay steps')
 tf.app.flags.DEFINE_float   ('decay_rate',       0.1,         'decay_rate')
+tf.app.flags.DEFINE_float   ('decay_power',      2.0,         'power for polynomial decay')
 tf.app.flags.DEFINE_float   ('momentum',         0.9,         'momentum for SGD with momentum')
 
 tf.app.flags.DEFINE_float   ('weight_decay',     0.0,         'weight_decay')
@@ -136,7 +142,7 @@ tf.app.flags.DEFINE_integer ('noise_level_max', -46, 'maximum level of noise, dB
 tf.app.flags.DEFINE_string  ('input_type',         'spectrogram',       'input features type: mfcc or spectrogram')
 tf.app.flags.DEFINE_integer ('num_audio_features',  161,       'number of mfcc coefficients or spectrogram frequency bins')
 
-tf.app.flags.DEFINE_integer ('num_conv_layers',  6,            'layer width to use when initialising layers')
+tf.app.flags.DEFINE_integer ('num_conv_layers',  10,            'layer width to use when initialising layers')
 tf.app.flags.DEFINE_integer ('num_rnn_layers',   1,            'layer width to use when initialising layers')
 tf.app.flags.DEFINE_string  ('rnn_type',        'gru',         'rnn-cell type')
 tf.app.flags.DEFINE_integer  ('rnn_cell_dim',    1024,         'rnn-cell dim')
@@ -167,7 +173,7 @@ tf.app.flags.DEFINE_string  ('alphabet_config_path', 'data/alphabet.txt', 'path 
 tf.app.flags.DEFINE_string  ('lm_binary_path',       'data/lm/lm.binary', 'path to the language model binary file created with KenLM')
 tf.app.flags.DEFINE_string  ('lm_trie_path',         'data/lm/trie', 'path to the language model trie file created with native_client/generate_trie')
 tf.app.flags.DEFINE_integer ('beam_width',        128,   'beam width used in the CTC decoder when building candidate transcriptions')
-tf.app.flags.DEFINE_float   ('lm_weight',         1.0,  'the alpha hyperparameter of the CTC decoder. Language Model weight.')
+tf.app.flags.DEFINE_float   ('lm_weight',         1.5,  'the alpha hyperparameter of the CTC decoder. Language Model weight.')
 tf.app.flags.DEFINE_float   ('word_count_weight', 1.00,  'the beta hyperparameter of the CTC decoder. Word insertion weight (penalty).')
 tf.app.flags.DEFINE_float   ('valid_word_count_weight', 2.50, 'valid word insertion weight. This is used to lessen the word insertion penalty when the inserted word is part of the vocabulary.')
 
@@ -220,6 +226,8 @@ def initialize_globals():
     # This node's available GPU devices
     global available_devices
     available_devices = [worker_device + gpu for gpu in get_available_gpus()]
+
+    global num_gpus
     num_gpus=len(available_devices)
     print("Found %d GPUs" % num_gpus)
 
@@ -280,13 +288,16 @@ def initialize_globals():
     ]
     '''
     conv_layers = [
-        {'kernel_size': [3,3], 'stride': [1,1], 'num_channels':  32, 'padding': 'SAME'},
-        {'kernel_size': [3,3], 'stride': [2,2], 'num_channels':  64, 'padding': 'SAME' },
-        {'kernel_size': [3,3], 'stride': [1,1], 'num_channels':  96, 'padding': 'SAME'},
-        {'kernel_size': [3,3], 'stride': [1,2], 'num_channels':  96, 'padding': 'SAME' },
-        {'kernel_size': [3,3], 'stride': [1,1], 'num_channels': 128, 'padding': 'SAME' },
-        {'kernel_size': [3,3], 'stride': [1,2], 'num_channels': 160, 'padding': 'SAME'}
+        {'kernel_size': [3, 3], 'stride': [2, 2], 'num_channels':  32, 'padding': 'SAME'},
+        {'kernel_size': [3, 3], 'stride': [1, 1], 'num_channels':  64, 'padding': 'SAME' },
+        {'kernel_size': [3, 3], 'stride': [2, 2], 'num_channels':  96, 'padding': 'SAME'},
+        {'kernel_size': [3, 3], 'stride': [1, 1], 'num_channels':  96, 'padding': 'SAME' },
+        {'kernel_size': [3, 3], 'stride': [1, 2], 'num_channels': 128, 'padding': 'SAME' },
+        {'kernel_size': [3, 3], 'stride': [1, 1], 'num_channels': 128, 'padding': 'SAME'},
+        {'kernel_size': [3, 3], 'stride': [1, 2], 'num_channels': 160, 'padding': 'SAME'},
+        {'kernel_size': [8, 8], 'stride': [1, 1], 'num_channels': 512, 'padding': 'VALID'}
     ]
+
     global reduction_factor
     reduction_factor = 1
 
@@ -629,8 +640,8 @@ def DeepSpeech2(batch_x, seq_length,training):
         print('{}: kernel={} stride={} ch=[{}, {}] f_out={}'.format(
             name, kernel_size, strides, ch_in, ch_out, f_out))
 
-        conv = conv2D_maxpool(name, input=conv, in_channels=ch_in, output_channels=ch_out,
-#        conv = conv2D(name, input=conv, in_channels=ch_in, output_channels=ch_out,
+#        conv = conv2D_maxpool(name, input=conv, in_channels=ch_in, output_channels=ch_out,
+        conv = conv2D(name, input=conv, in_channels=ch_in, output_channels=ch_out,
                    kernel_size=kernel_size, strides=strides,
                    padding=conv_layers[idx_conv]['padding'],
                    # activation_fn=tf.nn.relu,
@@ -676,6 +687,7 @@ def DeepSpeech2(batch_x, seq_length,training):
     #--- hidden layer with clipped RELU activation and dropout-----------------
 
     n_hidden_in = outputs.get_shape().as_list()[-1]
+
     h5 = variable_on_worker_level('h5', [n_hidden_in, n_hidden],
                    tf.contrib.layers.xavier_initializer(uniform=True),
                    trainable=True,
@@ -1022,7 +1034,9 @@ def calculate_report(results_tuple):
     samples.sort(key=lambda s: s.loss)
 
     # Take only the first report_count items
-    samples = samples[:FLAGS.report_count]
+    best_samples= samples[:FLAGS.report_count]
+    worst_samples = samples[-FLAGS.report_count:]
+    samples=best_samples + worst_samples
 
     # Order this top FLAGS.report_count items by their WER (lowest WER on top)
     samples.sort(key=lambda s: s.wer)
@@ -1275,7 +1289,10 @@ class Epoch(object):
                     self.samples.sort(key=lambda s: s.loss)
 
                     # Take only the first report_count items
-                    self.samples = self.samples[:FLAGS.report_count]
+                    # self.samples = self.samples[:FLAGS.report_count]
+                    best_samples  = self.samples[:FLAGS.report_count]
+                    worst_samples = self.samples[-FLAGS.report_count:]
+                    self.samples = best_samples + worst_samples
 
                     # Order this top FLAGS.report_count items by their WER (lowest WER on top)
                     self.samples.sort(key=lambda s: s.wer)
@@ -1743,13 +1760,23 @@ def train(server=None):
                                tower_feeder_count=len(available_devices),
                                input_type=input_type,
                                reduction_factor=reduction_factor)
-
-    if (FLAGS.decay_steps > 0) and (FLAGS.decay_rate > 0):
+    if (FLAGS.lr_decay_policy=='fixed'):
+        lr = tf.convert_to_tensor(FLAGS.learning_rate)
+    elif (FLAGS.lr_decay_policy=='exp'):
+        assert (FLAGS.decay_steps > 0) and (FLAGS.decay_rate > 0)
         lr = tf.train.exponential_decay(learning_rate = FLAGS.learning_rate,
-                                             global_step   = global_step,
-                                             decay_steps   = FLAGS.decay_steps,
-                                             decay_rate    = FLAGS.decay_rate,
-                                             staircase = True)
+                                        global_step   = global_step,
+                                        decay_steps   = FLAGS.decay_steps,
+                                        decay_rate    = FLAGS.decay_rate,
+                                        staircase = True)
+    elif (FLAGS.lr_decay_policy=='poly'):
+        max_steps = FLAGS.epoch * train_set.num_samples / (FLAGS.train_batch_size * num_gpus)
+        assert (FLAGS.decay_power > 0.) and (max_steps > 0 )
+        lr = tf.train.polynomial_decay(learning_rate=FLAGS.learning_rate,
+                                       global_step=global_step,
+                                       decay_steps=max_steps,
+                                       end_learning_rate=(FLAGS.learning_rate /1000.) ,
+                                       power= FLAGS.decay_power)
     else:
         lr = tf.convert_to_tensor(FLAGS.learning_rate)
 
@@ -1888,7 +1915,7 @@ def train(server=None):
                         session_time += batch_time
                         # Uncomment the next line for debugging race conditions / distributed TF
                         log_debug('Finished batch step %d %f' %(current_step, batch_loss))
-                        if ((current_step % 10) == 0):
+                        if ((current_step % 40) == 0):
                             log_info('time: %s, step: %d, loss: %f lr: %f' %
                                       (format_duration(session_time), current_step, batch_loss, learn_rate)
                                      )

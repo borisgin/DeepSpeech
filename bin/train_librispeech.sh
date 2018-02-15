@@ -4,7 +4,7 @@ export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:/usr/local/cuda-9.0/extras/CUPT
 export COMPUTE_DATA_DIR=/data/speech/LibriSpeech
 export LM_DIR=/data/speech/LM
 
-export EXPERIMENT=DS2-LS-F161-C3x32x64x96xs221-R1x256-H256-B16x8_drop0.5_aug
+export EXPERIMENT=DS2-LS-F128-C8xs221-H1024-B16x8_drop0.5_noaug
 
 export LOG_DIR=/ds2/experiments/${EXPERIMENT}
 export CHECKPOINT_DIR=${LOG_DIR}/checkpoints
@@ -30,19 +30,22 @@ CONFIG="\
   --dev_files ${COMPUTE_DATA_DIR}/librivox-dev-clean.csv \
   --test_files ${COMPUTE_DATA_DIR}/librivox-test-clean.csv \
   --input_type spectrogram \
-  --num_audio_features 161 \
-  --num_conv_layers 3 \
-  --num_rnn_layers 1 \
+  --num_audio_features 128 \
+  --augment False \
+  --num_conv_layers 9 \
+  --num_rnn_layers 0 \
   --rnn_cell_dim 256 \
   --rnn_type gru \
-  --n_hidden 256 \
-  --train_batch_size 16 \
+  --n_hidden 1024 \
+  --train_batch_size 32 \
   --dev_batch_size  16 \
   --test_batch_size 16 \
   --epoch 100 \
   --early_stop 0 \
-  --optimizer adam \
+  --optimizer momentum \
   --learning_rate 0.0002 \
+  --lr_decay_policy poly \
+  --decay_power 2.0 \
   --decay_steps 5000 \
   --decay_rate 0.9 \
   --display_step 10 \
@@ -55,8 +58,9 @@ CONFIG="\
   --summary_secs 600 \
   --lm_binary_path ${LM_DIR}/mozilla-lm.binary \
   --lm_trie_path ${LM_DIR}/mozilla-lm.trie \
-  --beam_width 64 \
-  --word_count_weight 1.5 \
+  --beam_width 128 \
+  --lm_weight 1.25 \
+  --word_count_weight 1. \
   --valid_word_count_weight 2.5 \
 "
 
