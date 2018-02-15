@@ -4,7 +4,7 @@ export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:/usr/local/cuda-9.0/extras/CUPT
 export COMPUTE_DATA_DIR=/data/speech/LibriSpeech
 export LM_DIR=/data/speech/LM
 
-export EXPERIMENT=DS2-LS-F128-C8xs221-H1024-B16x8_drop0.5_noaug
+export EXPERIMENT=DS3x3-LS-F128-C8xs221-H1024-B16x8_drop0.5_noaug
 
 export LOG_DIR=/ds2/experiments/${EXPERIMENT}
 export CHECKPOINT_DIR=${LOG_DIR}/checkpoints
@@ -68,7 +68,7 @@ echo VERSION: $(git rev-parse --short HEAD) | tee $LOG_FILE
 echo CONFIG: | tee -a $LOG_FILE
 echo $CONFIG | tee -a $LOG_FILE
 
-python -u DeepSpeech2.py $CONFIG \
+python -u DeepSpeech3x3.py $CONFIG \
   --wer_log_pattern "GLOBAL LOG: logwer('${COMPUTE_ID}', '%s', '%s', %f)" \
   --decoder_library_path native_client/libctc_decoder_with_kenlm.so \
   "$@" 2>&1 | tee -a $LOG_FILE
