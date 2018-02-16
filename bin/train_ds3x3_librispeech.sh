@@ -4,7 +4,7 @@ export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:/usr/local/cuda-9.0/extras/CUPT
 export COMPUTE_DATA_DIR=/data/speech/LibriSpeech
 export LM_DIR=/data/speech/LM
 
-export EXPERIMENT=DS3x3-LS-F128-C8xs221-H1024-B16x8_drop0.5_noaug
+export EXPERIMENT=DS3x3-LS-F128-C9xs221-H1024-B16x8_nodrop_noaug
 
 export LOG_DIR=/ds2/experiments/${EXPERIMENT}
 export CHECKPOINT_DIR=${LOG_DIR}/checkpoints
@@ -33,6 +33,7 @@ CONFIG="\
   --num_audio_features 128 \
   --augment False \
   --num_conv_layers 10 \
+  --conv_maxpool_fusion False \
   --num_rnn_layers 0 \
   --rnn_cell_dim 256 \
   --rnn_type gru \
@@ -40,7 +41,7 @@ CONFIG="\
   --train_batch_size 16 \
   --dev_batch_size  16 \
   --test_batch_size 16 \
-  --epoch 50 \
+  --epoch 100 \
   --early_stop 0 \
   --optimizer momentum \
   --learning_rate 0.0002 \
@@ -50,7 +51,7 @@ CONFIG="\
   --decay_rate 0.9 \
   --display_step 10 \
   --validation_step 5 \
-  --dropout_keep_prob 0.5 \
+  --dropout_keep_prob 1.0 \
   --weight_decay 0.0005 \
   --checkpoint_dir ${CHECKPOINT_DIR} \
   --checkpoint_secs 18000 \

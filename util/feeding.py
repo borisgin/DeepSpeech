@@ -177,13 +177,24 @@ class _DataSetLoader(object):
             source_len = len(source)
 
             # TODO: move fix ctc
+
             min_len = target_len * self._model_feeder.reduction_factor
             if source_len < min_len:
-                numpad = (min_len + 1 - source_len) // 2
+                #  numpad = (min_len + 1 - source_len) // 2
+                numpad = min_len - source_len
                 print('char_len={} audio_len={} pad={}'.format(target_len, len(source), numpad))
                 pad = np.zeros([numpad, self._model_feeder.numcep])
-                source = np.concatenate((pad, source, pad))
-
+                #   source = np.concatenate((pad, source, pad))
+                source = np.concatenate((source, pad))
+            '''
+            # hack for last 8x8 conv_layer
+            numpad= 8 * self._model_feeder.reduction_factor
+            min_len = target_len * self._model_feeder.reduction_factor
+            numpad = max(numpad, min_len - source_len)
+            pad = np.zeros([numpad, self._model_feeder.numcep])
+            source = np.concatenate((source, pad))
+            # end of hack 
+            '''
             #if source_len // self._model_feeder.reduction_factor < target_len:
             #    print("audio {}, chars {}".format(source.shape, target_len))
             #    raise ValueError('Error: Audio file {} is too short for transcription.'.format(wav_file))
