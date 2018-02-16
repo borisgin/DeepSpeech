@@ -294,7 +294,8 @@ def initialize_globals():
         {'kernel_size': [3, 3], 'stride': [1, 1], 'num_channels':  96, 'padding': 'SAME' },
         {'kernel_size': [3, 3], 'stride': [1, 2], 'num_channels': 128, 'padding': 'SAME' },
         {'kernel_size': [3, 3], 'stride': [1, 1], 'num_channels': 128, 'padding': 'SAME'},
-        {'kernel_size': [3, 3], 'stride': [1, 2], 'num_channels': 160, 'padding': 'SAME'},
+        {'kernel_size': [3, 3], 'stride': [1, 2], 'num_channels': 256, 'padding': 'SAME'},
+        {'kernel_size': [3, 3], 'stride': [1, 1], 'num_channels': 256, 'padding': 'SAME'},
         {'kernel_size': [8, 8], 'stride': [1, 1], 'num_channels': 512, 'padding': 'VALID'}
     ]
 

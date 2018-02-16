@@ -32,15 +32,15 @@ CONFIG="\
   --input_type spectrogram \
   --num_audio_features 128 \
   --augment False \
-  --num_conv_layers 9 \
+  --num_conv_layers 10 \
   --num_rnn_layers 0 \
   --rnn_cell_dim 256 \
   --rnn_type gru \
   --n_hidden 1024 \
-  --train_batch_size 32 \
+  --train_batch_size 16 \
   --dev_batch_size  16 \
   --test_batch_size 16 \
-  --epoch 100 \
+  --epoch 50 \
   --early_stop 0 \
   --optimizer momentum \
   --learning_rate 0.0002 \
@@ -59,8 +59,8 @@ CONFIG="\
   --lm_binary_path ${LM_DIR}/mozilla-lm.binary \
   --lm_trie_path ${LM_DIR}/mozilla-lm.trie \
   --beam_width 128 \
-  --lm_weight 1.25 \
-  --word_count_weight 1. \
+  --lm_weight 1.5 \
+  --word_count_weight 1.0 \
   --valid_word_count_weight 2.5 \
 "
 
