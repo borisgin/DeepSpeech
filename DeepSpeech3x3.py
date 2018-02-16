@@ -142,7 +142,8 @@ tf.app.flags.DEFINE_integer ('noise_level_max', -46, 'maximum level of noise, dB
 tf.app.flags.DEFINE_string  ('input_type',         'spectrogram',       'input features type: mfcc or spectrogram')
 tf.app.flags.DEFINE_integer ('num_audio_features',  161,       'number of mfcc coefficients or spectrogram frequency bins')
 
-tf.app.flags.DEFINE_integer ('num_conv_layers',  10,            'layer width to use when initialising layers')
+tf.app.flags.DEFINE_integer ('num_conv_layers',  10,           'layer width to use when initialising layers')
+tf.app.flags.DEFINE_boolean ('conv_maxpool_fusion',  False,    'use max-pooling instead of stride')
 tf.app.flags.DEFINE_integer ('num_rnn_layers',   1,            'layer width to use when initialising layers')
 tf.app.flags.DEFINE_string  ('rnn_type',        'gru',         'rnn-cell type')
 tf.app.flags.DEFINE_integer  ('rnn_cell_dim',    1024,         'rnn-cell dim')
@@ -641,14 +642,22 @@ def DeepSpeech2(batch_x, seq_length,training):
         print('{}: kernel={} stride={} ch=[{}, {}] f_out={}'.format(
             name, kernel_size, strides, ch_in, ch_out, f_out))
 
-#        conv = conv2D_maxpool(name, input=conv, in_channels=ch_in, output_channels=ch_out,
-        conv = conv2D(name, input=conv, in_channels=ch_in, output_channels=ch_out,
-                   kernel_size=kernel_size, strides=strides,
-                   padding=conv_layers[idx_conv]['padding'],
-                   # activation_fn=tf.nn.relu,
-                   weights_initializer=tf.contrib.layers.xavier_initializer(uniform=False),
-                   bias_initializer=tf.constant_initializer(0.000001),
-                   training=training)
+        if FLAGS.conv_maxpool_fusion:
+            conv = conv2D_maxpool(name, input=conv, in_channels=ch_in, output_channels=ch_out,
+                          kernel_size=kernel_size, strides=strides,
+                          padding=conv_layers[idx_conv]['padding'],
+                          # activation_fn=tf.nn.relu,
+                          weights_initializer=tf.contrib.layers.xavier_initializer(uniform=False),
+                          bias_initializer=tf.constant_initializer(0.000001),
+                          training=training)
+        else:
+            conv = conv2D(name, input=conv, in_channels=ch_in, output_channels=ch_out,
+                          kernel_size=kernel_size, strides=strides,
+                          padding=conv_layers[idx_conv]['padding'],
+                          # activation_fn=tf.nn.relu,
+                          weights_initializer=tf.contrib.layers.xavier_initializer(uniform=False),
+                          bias_initializer=tf.constant_initializer(0.000001),
+                          training=training)
     
     # transpose to [T,B,F,C] format
     conv =  tf.transpose(conv, [1, 0, 2, 3])
@@ -1916,7 +1925,7 @@ def train(server=None):
                         session_time += batch_time
                         # Uncomment the next line for debugging race conditions / distributed TF
                         log_debug('Finished batch step %d %f' %(current_step, batch_loss))
-                        if ((current_step % 40) == 0):
+                        if ((current_step % 100) == 0):
                             log_info('time: %s, step: %d, loss: %f lr: %f' %
                                       (format_duration(session_time), current_step, batch_loss, learn_rate)
                                      )
