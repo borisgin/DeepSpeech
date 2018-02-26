@@ -485,6 +485,7 @@ def conv2D(name,
            activation_fn=lambda x: tf.minimum(tf.nn.relu(x), FLAGS.relu_clip),
            weights_initializer=tf.contrib.layers.xavier_initializer(uniform=False),
            bias_initializer=tf.zeros_initializer(),
+           bn = True,
            training = True
            ):
     #filter_shape= [kernel_size[0], kernel_size[1], in_channels, output_channels]
@@ -493,15 +494,18 @@ def conv2D(name,
                    initializer=weights_initializer, trainable=True,
                    regularizer=tf.contrib.layers.l2_regularizer(weight_decay) if (weight_decay > 0.) else None)
 
-    b = variable_on_worker_level(name+'/b',
-                   shape=[output_channels],
-                   initializer=bias_initializer, trainable=True,
-                   regularizer=tf.contrib.layers.l2_regularizer(weight_decay) if (weight_decay > 0.) else None)
-
     s = [1, strides[0], strides[1], 1]
     y = tf.nn.conv2d(input, w, s, padding)
-    y = batch_norm(name+'_bn', y , training = training)
-    y = tf.nn.bias_add(y, b)
+
+    if bn:
+        y = batch_norm(name+'_bn', y , training = training)
+    else:
+        b = variable_on_worker_level(name + '/b',
+                                     shape=[output_channels],
+                                     initializer=bias_initializer, trainable=True,
+                                     regularizer=tf.contrib.layers.l2_regularizer(weight_decay) if (
+                                     weight_decay > 0.) else None)
+        y = tf.nn.bias_add(y, b)
     output = activation_fn(y)
     return output
 
@@ -600,6 +604,7 @@ def DeepSpeech2(batch_x, seq_length,training):
                    # activation_fn=tf.nn.relu,
                    weights_initializer=tf.contrib.layers.xavier_initializer(uniform=False),
                    bias_initializer=tf.constant_initializer(0.000001),
+                   bn =  True,
                    training=training)
     
     # transpose to [T,B,F,C] format

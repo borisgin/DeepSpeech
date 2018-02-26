@@ -12,6 +12,7 @@ try:
 except ImportError:
     import numpy as np
     from python_speech_features import mfcc
+    from python_speech_features import logfbank
     from python_speech_features.sigproc import framesig, logpowspec, powspec
     from six.moves import range
 
@@ -54,24 +55,27 @@ except ImportError:
 
             # TODO: try log(1+powspec)
             # train_inputs = np.log1p(powspec(frames, NFFT=(numcep-1)*2))
-           # train_inputs = logpowspec(frames, NFFT=(numcep-1)*2)
+            # train_inputs = logpowspec(frames, NFFT=(numcep-1)*2)
             nfft=int(fs*0.020)
             train_inputs = logpowspec(frames, NFFT=nfft)
             numcep = min(nfft // 2 + 1,numcep)
             train_inputs = train_inputs[...,:numcep]
 
+        elif input_type == 'logfbank':
+            # Get log  mel-filterbank energy
+            # see "Letter-based SR with Gated Convnets"
+            train_inputs = logfbank(audio, samplerate=fs, winlen=0.02, winstep=0.01,
+                                    nfilt=numcep)
+
         elif input_type == 'mfcc':
             # Get mfcc coefficients
             #features = mfcc(audio, samplerate=fs, numcep=numcep)
-
             features = mfcc(audio, samplerate=fs, winlen=0.025, winstep=0.01,
-                 numcep=numcep,
-                 nfilt= 2*numcep,
-                 nfft=512,
-                 lowfreq=0, highfreq=None,
-                 preemph=0.97,
-                 ceplifter= 2*numcep,  #22,
-                 appendEnergy=False)
+                            numcep=16, appendEnergy=False, winfunc=numpy.hamming)
+
+            #features = mfcc(audio, samplerate=fs, winlen=0.025, winstep=0.01,
+            #     numcep=numcep,  nfilt= 2*numcep, ceplifter= 2*numcep,
+            #     appendEnergy=False, winfunc=numpy.hamming )
 
             # We only keep every second feature (BiRNN stride = 2)
             #features = features[::2]
