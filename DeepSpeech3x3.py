@@ -141,6 +141,7 @@ tf.app.flags.DEFINE_integer ('noise_level_max', -46, 'maximum level of noise, dB
 # Geometry
 tf.app.flags.DEFINE_string  ('input_type',         'spectrogram',       'input features type: mfcc or spectrogram')
 tf.app.flags.DEFINE_integer ('num_audio_features',  161,       'number of mfcc coefficients or spectrogram frequency bins')
+tf.app.flags.DEFINE_integer ('num_pad',  0,                    'padding from both side of sequence')
 
 tf.app.flags.DEFINE_integer ('num_conv_layers',  10,           'layer width to use when initialising layers')
 tf.app.flags.DEFINE_boolean ('conv_maxpool_fusion',  False,    'use max-pooling instead of stride')
@@ -275,7 +276,9 @@ def initialize_globals():
     global n_context
     n_context = 0 # TODO: clean it out
 
-    # Number of units in hidden layers
+    global n_pad
+    n_pad = FLAGS.num_pad
+    print("padding: {}".format(n_pad))
 
     global num_conv_layers
     num_conv_layers = FLAGS.num_conv_layers
@@ -287,7 +290,7 @@ def initialize_globals():
         {'kernel_size': [11,21], 'stride': [1,2], 'num_channels': 64, 'padding': 'SAME' },
         {'kernel_size': [11,21], 'stride': [1,2], 'num_channels': 96, 'padding': 'SAME'}
     ]
-    '''
+    
     conv_layers = [
         {'kernel_size': [3, 3], 'stride': [2, 2], 'num_channels':  32, 'padding': 'SAME'},
         {'kernel_size': [3, 3], 'stride': [1, 1], 'num_channels':  64, 'padding': 'SAME' },
@@ -295,14 +298,24 @@ def initialize_globals():
         {'kernel_size': [3, 3], 'stride': [1, 1], 'num_channels':  96, 'padding': 'SAME' },
         {'kernel_size': [3, 3], 'stride': [1, 2], 'num_channels': 128, 'padding': 'SAME' },
         {'kernel_size': [3, 3], 'stride': [1, 1], 'num_channels': 128, 'padding': 'SAME'},
-        {'kernel_size': [3, 3], 'stride': [1, 2], 'num_channels': 256, 'padding': 'SAME'},
+        {'kernel_size': [3, 3], 'stride': [1, 1], 'num_channels': 256, 'padding': 'SAME'},
         {'kernel_size': [3, 3], 'stride': [1, 1], 'num_channels': 256, 'padding': 'SAME'},
         {'kernel_size': [8, 8], 'stride': [1, 1], 'num_channels': 1024, 'padding': 'VALID'}
+    ]
+    '''
+
+    conv_layers = [
+        {'kernel_size':  [3, 3], 'stride': [2, 2], 'num_channels': 32, 'padding': 'SAME'},
+        {'kernel_size':  [3, 3], 'stride': [1, 1], 'num_channels': 64, 'padding': 'SAME'},
+        {'kernel_size':  [5, 1], 'stride': [1, 2], 'num_channels': 128, 'padding': 'SAME'},
+        {'kernel_size':  [5, 1], 'stride': [1, 1], 'num_channels': 128, 'padding': 'SAME'},
+        {'kernel_size':  [5, 1], 'stride': [1, 2], 'num_channels': 256, 'padding': 'SAME'},
+        {'kernel_size':  [5, 1], 'stride': [1, 1], 'num_channels': 256, 'padding': 'SAME'},
+        {'kernel_size': [16, 8], 'stride': [1, 1], 'num_channels': 1024, 'padding': 'VALID'}
     ]
 
     global reduction_factor
     reduction_factor = 1
-
     N_conv = min(len(conv_layers), num_conv_layers)
     for i in range(N_conv):
         reduction_factor = reduction_factor * conv_layers[i]['stride'][0]
@@ -494,9 +507,11 @@ def conv2D(name,
            kernel_size=[3,3],
            strides=[1,1],
            padding='SAME',
-           activation_fn=lambda x: tf.minimum(tf.nn.relu(x), FLAGS.relu_clip),
+  #         activation_fn=lambda x: tf.minimum(tf.nn.relu(x), FLAGS.relu_clip),
+           activation_fn= lambda x:tf.nn.relu(x),
            weights_initializer=tf.contrib.layers.xavier_initializer(uniform=False),
            bias_initializer=tf.zeros_initializer(),
+           bn = True,
            training = True
            ):
     #filter_shape= [kernel_size[0], kernel_size[1], in_channels, output_channels]
@@ -505,15 +520,18 @@ def conv2D(name,
                    initializer=weights_initializer, trainable=True,
                    regularizer=tf.contrib.layers.l2_regularizer(weight_decay) if (weight_decay > 0.) else None)
 
-    b = variable_on_worker_level(name+'/b',
-                   shape=[output_channels],
-                   initializer=bias_initializer, trainable=True,
-                   regularizer=tf.contrib.layers.l2_regularizer(weight_decay) if (weight_decay > 0.) else None)
 
     s = [1, strides[0], strides[1], 1]
     y = tf.nn.conv2d(input, w, s, padding)
-    y = batch_norm(name+'_bn', y , training = training)
-    y = tf.nn.bias_add(y, b)
+    if bn:
+        y = batch_norm(name+'_bn', y , training = training)
+    else:
+        b = variable_on_worker_level(name+'/b',
+                       shape=[output_channels],
+                       initializer=bias_initializer, trainable=True,
+                       regularizer=tf.contrib.layers.l2_regularizer(weight_decay) if (weight_decay > 0.) else None)
+        y = tf.nn.bias_add(y, b)
+
     output = activation_fn(y)
     return output
 
@@ -524,9 +542,11 @@ def conv2D_maxpool(name,
            kernel_size=[3,3],
            strides=[1,1],
            padding='SAME',
-           activation_fn=lambda x: tf.minimum(tf.nn.relu(x), FLAGS.relu_clip),
+          # activation_fn=lambda x: tf.minimum(tf.nn.relu(x), FLAGS.relu_clip),
+           activation_fn= lambda x: tf.nn.relu(x),
            weights_initializer=tf.contrib.layers.xavier_initializer(uniform=False),
            bias_initializer=tf.zeros_initializer(),
+           bn=True,
            training = True
            ):
     #filter_shape= [kernel_size[0], kernel_size[1], in_channels, output_channels]
@@ -535,10 +555,6 @@ def conv2D_maxpool(name,
                    initializer=weights_initializer, trainable=True,
                    regularizer=tf.contrib.layers.l2_regularizer(weight_decay) if (weight_decay > 0.) else None)
 
-    b = variable_on_worker_level(name+'/b',
-                   shape=[output_channels],
-                   initializer=bias_initializer, trainable=True,
-                   regularizer=tf.contrib.layers.l2_regularizer(weight_decay) if (weight_decay > 0.) else None)
 
     s = [1,1,1,1]
     y = tf.nn.conv2d(input, w, s, padding)
@@ -547,8 +563,15 @@ def conv2D_maxpool(name,
         k= [1, 3, 3, 1]
         y=tf.nn.max_pool(y, k, s, padding)
 
-    y = batch_norm(name+'_bn', y , training = training)
-    y = tf.nn.bias_add(y, b)
+    if bn:
+        y = batch_norm(name+'_bn', y , training = training)
+    else:
+        b = variable_on_worker_level(name+'/b',
+                       shape=[output_channels],
+                       initializer=bias_initializer, trainable=True,
+                       regularizer=tf.contrib.layers.l2_regularizer(weight_decay) if (weight_decay > 0.) else None)
+        y = tf.nn.bias_add(y, b)
+
     output = activation_fn(y)
     return output
 
@@ -649,6 +672,7 @@ def DeepSpeech2(batch_x, seq_length,training):
                           # activation_fn=tf.nn.relu,
                           weights_initializer=tf.contrib.layers.xavier_initializer(uniform=False),
                           bias_initializer=tf.constant_initializer(0.000001),
+                          bn=True,
                           training=training)
         else:
             conv = conv2D(name, input=conv, in_channels=ch_in, output_channels=ch_out,
@@ -657,6 +681,7 @@ def DeepSpeech2(batch_x, seq_length,training):
                           # activation_fn=tf.nn.relu,
                           weights_initializer=tf.contrib.layers.xavier_initializer(uniform=False),
                           bias_initializer=tf.constant_initializer(0.000001),
+                          bn=True,
                           training=training)
     
     # transpose to [T,B,F,C] format
@@ -694,10 +719,9 @@ def DeepSpeech2(batch_x, seq_length,training):
         # Reshape from [T, B, FC] to [T*B, FC]
         outputs = tf.reshape(outputs, [-1, fc])
 
-    #--- hidden layer with clipped RELU activation and dropout-----------------
+    #--- hidden layer with dropout-----------------
 
     n_hidden_in = outputs.get_shape().as_list()[-1]
-
     h5 = variable_on_worker_level('h5', [n_hidden_in, n_hidden],
                    tf.contrib.layers.xavier_initializer(uniform=True),
                    trainable=True,
@@ -706,7 +730,8 @@ def DeepSpeech2(batch_x, seq_length,training):
                    tf.constant_initializer(0.),
                    trainable=True,
                    regularizer=tf.contrib.layers.l2_regularizer(weight_decay) if (weight_decay > 0.) else None)
-    outputs = tf.minimum(tf.nn.relu(tf.add(tf.matmul(outputs, h5), b5)), FLAGS.relu_clip)
+    # outputs = tf.minimum(tf.nn.relu(tf.add(tf.matmul(outputs, h5), b5)), FLAGS.relu_clip)
+    outputs = tf.nn.relu(tf.add(tf.matmul(outputs, h5), b5))
     outputs = tf.nn.dropout(outputs, dropout)
 
     #--- creating the logits --------------------------------------------------
@@ -1764,12 +1789,14 @@ def train(server=None):
     model_feeder = ModelFeeder(train_set,
                                dev_set,
                                test_set,
-                               n_input,
-                               n_context,
-                               alphabet,
+                               numcep=n_input,
+                               numcontext=n_context,
+                               alphabet=alphabet,
                                tower_feeder_count=len(available_devices),
                                input_type=input_type,
-                               reduction_factor=reduction_factor)
+                               reduction_factor=reduction_factor,
+                               numpad=n_pad
+    )
     if (FLAGS.lr_decay_policy=='fixed'):
         lr = tf.convert_to_tensor(FLAGS.learning_rate)
     elif (FLAGS.lr_decay_policy=='exp'):
@@ -1925,7 +1952,7 @@ def train(server=None):
                         session_time += batch_time
                         # Uncomment the next line for debugging race conditions / distributed TF
                         log_debug('Finished batch step %d %f' %(current_step, batch_loss))
-                        if ((current_step % 100) == 0):
+                        if ((current_step % 40) == 0):
                             log_info('time: %s, step: %d, loss: %f lr: %f' %
                                       (format_duration(session_time), current_step, batch_loss, learn_rate)
                                      )

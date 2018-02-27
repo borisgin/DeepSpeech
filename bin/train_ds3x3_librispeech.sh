@@ -4,7 +4,7 @@ export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:/usr/local/cuda-9.0/extras/CUPT
 export COMPUTE_DATA_DIR=/data/speech/LibriSpeech
 export LM_DIR=/data/speech/LM
 
-export EXPERIMENT=DS3x3-LS-F128-C9xs221-H1024-B16x8_nodrop_noaug
+export EXPERIMENT=DS3x3-LS-F64-C7xs211-H1024-B16x8_nodrop_noaug
 
 export LOG_DIR=/ds2/experiments/${EXPERIMENT}
 export CHECKPOINT_DIR=${LOG_DIR}/checkpoints
@@ -29,14 +29,13 @@ CONFIG="\
   --train_files ${COMPUTE_DATA_DIR}/librivox-train-clean-100.csv,${COMPUTE_DATA_DIR}/librivox-train-clean-360.csv,${COMPUTE_DATA_DIR}/librivox-train-other-500.csv \
   --dev_files ${COMPUTE_DATA_DIR}/librivox-dev-clean.csv \
   --test_files ${COMPUTE_DATA_DIR}/librivox-test-clean.csv \
-  --input_type spectrogram \
-  --num_audio_features 128 \
+  --input_type logfbank \
+  --num_audio_features 64 \
+  --num_pad 20 \
   --augment False \
   --num_conv_layers 10 \
-  --conv_maxpool_fusion False \
+  --conv_maxpool_fusion True \
   --num_rnn_layers 0 \
-  --rnn_cell_dim 256 \
-  --rnn_type gru \
   --n_hidden 1024 \
   --train_batch_size 16 \
   --dev_batch_size  16 \
@@ -44,7 +43,7 @@ CONFIG="\
   --epoch 100 \
   --early_stop 0 \
   --optimizer momentum \
-  --learning_rate 0.0002 \
+  --learning_rate 0.0004 \
   --lr_decay_policy poly \
   --decay_power 2.0 \
   --decay_steps 5000 \
@@ -52,14 +51,14 @@ CONFIG="\
   --display_step 10 \
   --validation_step 5 \
   --dropout_keep_prob 1.0 \
-  --weight_decay 0.0005 \
+  --weight_decay 0.0001 \
   --checkpoint_dir ${CHECKPOINT_DIR} \
   --checkpoint_secs 18000 \
   --summary_dir ${SUMMARY_DIR} \
   --summary_secs 600 \
   --lm_binary_path ${LM_DIR}/mozilla-lm.binary \
   --lm_trie_path ${LM_DIR}/mozilla-lm.trie \
-  --beam_width 128 \
+  --beam_width 256 \
   --lm_weight 1.5 \
   --word_count_weight 1.0 \
   --valid_word_count_weight 2.5 \
