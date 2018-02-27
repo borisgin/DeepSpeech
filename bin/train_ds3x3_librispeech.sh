@@ -36,19 +36,19 @@ CONFIG="\
   --num_conv_layers 10 \
   --conv_maxpool_fusion True \
   --num_rnn_layers 0 \
-  --n_hidden 1024 \
+  --n_hidden 2048 \
   --train_batch_size 16 \
   --dev_batch_size  16 \
   --test_batch_size 16 \
   --epoch 100 \
   --early_stop 0 \
   --optimizer momentum \
-  --learning_rate 0.0004 \
+  --learning_rate 0.0002 \
   --lr_decay_policy poly \
   --decay_power 2.0 \
   --decay_steps 5000 \
   --decay_rate 0.9 \
-  --display_step 10 \
+  --display_step 20 \
   --validation_step 5 \
   --dropout_keep_prob 1.0 \
   --weight_decay 0.0001 \
