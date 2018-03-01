@@ -27,7 +27,9 @@ class ModelFeeder(object):
                  tower_feeder_count=-1,
                  threads_per_queue=2,
                  input_type='mfcc',
-                 reduction_factor=1):
+                 reduction_factor=1,
+                 numpad=0
+        ):
 
         self.train = train_set
         self.dev = dev_set
@@ -37,6 +39,7 @@ class ModelFeeder(object):
         self.numcontext = numcontext
         self.input_type = input_type
         self.reduction_factor  = reduction_factor
+        self.numpad = numpad
         self.tower_feeder_count = max(len(get_available_gpus()), 1) if tower_feeder_count < 0 else tower_feeder_count
         self.threads_per_queue = threads_per_queue
 
@@ -185,6 +188,13 @@ class _DataSetLoader(object):
                 # source = np.concatenate((pad, source, pad))
 
             #--------------------------------------------------
+
+            num_features = self._model_feeder.numcep
+            numpad= self._model_feeder.numpad
+            pad_shape = [numpad, num_features]
+            start_pad = np.broadcast_to(source[0, :], pad_shape)
+            end_pad = np.broadcast_to(source[-1, :], pad_shape)
+            source = np.concatenate((start_pad, source, end_pad))
             #if source_len // self._model_feeder.reduction_factor < target_len:
             #    print("audio {}, chars {}".format(source.shape, target_len))
             #    raise ValueError('Error: Audio file {} is too short for transcription.'.format(wav_file))

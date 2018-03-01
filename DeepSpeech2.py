@@ -135,6 +135,7 @@ tf.app.flags.DEFINE_integer ('noise_level_max', -46,            'maximum level o
 # Geometry
 tf.app.flags.DEFINE_string  ('input_type',       'spectrogram','input features type: mfcc or spectrogram')
 tf.app.flags.DEFINE_integer ('num_audio_features',  161,       'number of mfcc coefficients or spectrogram frequency bins')
+tf.app.flags.DEFINE_integer ('num_pad', 0, 'padding from both side of sequence')
 
 tf.app.flags.DEFINE_integer ('num_conv_layers',  2,            'layer width to use when initialising layers')
 tf.app.flags.DEFINE_integer ('num_rnn_layers',   1,            'layer width to use when initialising layers')
@@ -269,6 +270,10 @@ def initialize_globals():
     # The number of frames in the context
     global n_context
     n_context = 0 # TODO: clean it out
+
+    global n_pad
+    n_pad = FLAGS.num_pad
+    print("padding: {}".format(n_pad))
 
     # Number of units in hidden layers
 
@@ -1755,7 +1760,9 @@ def train(server=None):
                                alphabet,
                                tower_feeder_count=len(available_devices),
                                input_type=input_type,
-                               reduction_factor=reduction_factor)
+                               reduction_factor=reduction_factor,
+                               numpad=n_pad
+)
 
     if (FLAGS.decay_steps > 0) and (FLAGS.decay_rate > 0):
         lr = tf.train.exponential_decay(learning_rate = FLAGS.learning_rate,
