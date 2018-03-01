@@ -1,5 +1,8 @@
 from __future__ import absolute_import, print_function
 
+import warnings
+warnings.filterwarnings("ignore", message="The binary mode of fromstring is deprecated")
+
 import scipy.io.wavfile as wav
 import sys
 

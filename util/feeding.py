@@ -102,10 +102,10 @@ class DataSet(object):
                 self.files = self.files.append(file)
         if ascending:
             self.files = self.files.sort_values(by="wav_filesize", ascending=ascending) \
-                         .ix[:, ["wav_filename", "transcript"]] \
+                         .loc[:, ["wav_filename", "transcript"]] \
                          .values[skip:]
         else:
-            self.files = self.files.ix[:, ["wav_filename", "transcript"]] \
+            self.files = self.files.loc[:, ["wav_filename", "transcript"]] \
                          .values[skip:]
         if limit > 0:
             self.files = self.files[:limit]
@@ -176,9 +176,15 @@ class _DataSetLoader(object):
             if source_len < min_len:
                 numpad = (min_len - source_len) // 2
                 print('char_len={} audio_len={} pad={}'.format(target_len, len(source), numpad))
-                pad = np.zeros([numpad, self._model_feeder.numcep])
-                source = np.concatenate((pad, source, pad))
+                num_features=self._model_feeder.numcep
+                pad_shape=[numpad, num_features]
+                start_pad = np.broadcast_to(source[0, :], pad_shape)
+                end_pad   = np.broadcast_to(source[-1,:], pad_shape)
+                source = np.concatenate((start_pad, source, end_pad))
+                # pad = np.zeros([numpad, self._model_feeder.numcep])
+                # source = np.concatenate((pad, source, pad))
 
+            #--------------------------------------------------
             #if source_len // self._model_feeder.reduction_factor < target_len:
             #    print("audio {}, chars {}".format(source.shape, target_len))
             #    raise ValueError('Error: Audio file {} is too short for transcription.'.format(wav_file))

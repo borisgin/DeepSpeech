@@ -127,26 +127,30 @@ tf.app.flags.DEFINE_integer ('summary_secs',     None,        'interval in secon
 tf.app.flags.DEFINE_integer ('summary_steps',    None,        'interval in steps for saving TensorBoard summaries - if 0, no summaries will be written')
 
 # Data augmentation
-tf.app.flags.DEFINE_boolean ('augment', True, 'augment training dataset')
-tf.app.flags.DEFINE_float   ('time_stretch_ratio', 0.2, '+/- time_stretch_ratio speed up / slow down')
-tf.app.flags.DEFINE_integer ('noise_level_min', -90, 'minimum level of noise, dB')
-tf.app.flags.DEFINE_integer ('noise_level_max', -46, 'maximum level of noise, dB')
+tf.app.flags.DEFINE_boolean ('augment',          False,         'augment training dataset')
+tf.app.flags.DEFINE_float   ('time_stretch_ratio', 0.2,        '+/- time_stretch_ratio speed up / slow down')
+tf.app.flags.DEFINE_integer ('noise_level_min', -90,           'minimum level of noise, dB')
+tf.app.flags.DEFINE_integer ('noise_level_max', -46,            'maximum level of noise, dB')
 
 # Geometry
-tf.app.flags.DEFINE_string  ('input_type',         'spectrogram',       'input features type: mfcc or spectrogram')
+tf.app.flags.DEFINE_string  ('input_type',       'spectrogram','input features type: mfcc or spectrogram')
 tf.app.flags.DEFINE_integer ('num_audio_features',  161,       'number of mfcc coefficients or spectrogram frequency bins')
 
 tf.app.flags.DEFINE_integer ('num_conv_layers',  2,            'layer width to use when initialising layers')
 tf.app.flags.DEFINE_integer ('num_rnn_layers',   1,            'layer width to use when initialising layers')
 tf.app.flags.DEFINE_string  ('rnn_type',        'gru',         'rnn-cell type')
-tf.app.flags.DEFINE_integer  ('rnn_cell_dim',     1024,         'rnn-cell dim')
+tf.app.flags.DEFINE_integer ('rnn_cell_dim',     1024,         'rnn-cell dim')
+tf.app.flags.DEFINE_boolean ('rnn_unidirectional', False,      'bi-directional or uni-directional')
+
+tf.app.flags.DEFINE_boolean ('row_conv',          False,      'row convolution')
+tf.app.flags.DEFINE_integer ('row_conv_width',     16,         'rnn-cell dim')
 
 tf.app.flags.DEFINE_integer ('n_hidden',         1024,        'layer width to use when initialising layers')
 
 # Initialization
 
-tf.app.flags.DEFINE_integer ('random_seed',      1,        'default random seed that is used to initialize variables')
-tf.app.flags.DEFINE_float   ('default_stddev',   0.0001,    'default standard deviation to use when initialising weights and biases')
+tf.app.flags.DEFINE_integer ('random_seed',      1,           'default random seed that is used to initialize variables')
+tf.app.flags.DEFINE_float   ('default_stddev',   0.0001,      'default standard deviation to use when initialising weights and biases')
 
 # Early Stopping
 
@@ -298,6 +302,9 @@ def initialize_globals():
 
     global num_rnn_layers
     num_rnn_layers = FLAGS.num_rnn_layers
+
+    global rnn_unidirectional
+    rnn_unidirectional=FLAGS.rnn_unidirectional
 
     global n_hidden
     n_hidden = FLAGS.n_hidden
@@ -505,8 +512,34 @@ def conv2D(name,
     output = activation_fn(y)
     return output
 
-# =========================================================
+# ==========================================================
+def row_conv(name,
+           input,
+           batch,
+           channels,
+           width,
+           activation_fn=lambda x: tf.nn.relu(x),
+           weights_initializer=tf.contrib.layers.xavier_initializer_conv2d(),
+           training = True
+           ):
+    #filter_shape= [widht, 1, in_channels, 1]
 
+    w = variable_on_worker_level(name+'/w',
+                    shape = [width, 1, channels, 1],
+    #               shape = [1, width,  channels, 1],
+                   initializer=weights_initializer, trainable=True,
+                   regularizer=tf.contrib.layers.l2_regularizer(weight_decay) if (weight_decay > 0.) else None)
+
+
+    x=tf.reshape(input, [batch,-1,1,channels])
+    y = tf.nn.depthwise_conv2d(input=x, filter=w, strides=[1, 1, 1, 1], padding='SAME', data_format='NHWC')
+    y = batch_norm(name + '_bn', y, training=training)
+    y = activation_fn(y)
+    #y=x
+    output = tf.reshape(y, [batch,-1,channels])
+    return output
+
+#===========================================================
 def rnn_cell(rnn_cell_dim = 1024, layer_type="gru", dropout=1.0):
     if (layer_type=="lstm"):
         cell = tf.contrib.rnn.BasicLSTMCell(rnn_cell_dim, forget_bias=1.0, state_is_tuple=True) \
@@ -602,44 +635,60 @@ def DeepSpeech2(batch_x, seq_length,training):
                    bias_initializer=tf.constant_initializer(0.000001),
                    training=training)
     
-    # transpose to [T,B,F,C] format
-    conv =  tf.transpose(conv, [1, 0, 2, 3])
-    print(conv.get_shape())
-
-    # reshape to [T, B, FxC]
+    # reshape: [B, T, F, C] --> [B, T, FxC]
+    B = batch_x_shape[0]
+    T = conv.get_shape().as_list()[1]
     F = conv.get_shape().as_list()[2]
     C = conv.get_shape().as_list()[3]
     fc = F*C
-    outputs = tf.reshape(conv, [-1, batch_size, fc])
+    outputs = tf.reshape(conv, [B , -1 , fc])
 
     # ----- RNN ---------------------------------------------------------------
     if (num_rnn_layers > 0):
         rnn_input = outputs
         rnn_cell_dim = int(FLAGS.rnn_cell_dim)
-        multirnn_cell_fw = tf.contrib.rnn.MultiRNNCell(
-            [rnn_cell(rnn_cell_dim=rnn_cell_dim, layer_type=FLAGS.rnn_type, dropout=dropout) for _ in range(num_rnn_layers)])
-        multirnn_cell_bw = tf.contrib.rnn.MultiRNNCell(
-            [rnn_cell(rnn_cell_dim=rnn_cell_dim, layer_type=FLAGS.rnn_type, dropout=dropout) for _ in range(num_rnn_layers)])
-        outputs,output_states = tf.nn.bidirectional_dynamic_rnn(cell_fw = multirnn_cell_fw,
-                   cell_bw = multirnn_cell_bw,
-                   inputs=rnn_input,
-                   dtype=tf.float32,
-                   time_major=True,
-                   sequence_length=seq_length)
+        if rnn_unidirectional:
+            print("Uni-directional RNN")
+            multirnn_cell_fw = tf.contrib.rnn.MultiRNNCell(
+                [rnn_cell(rnn_cell_dim=rnn_cell_dim, layer_type=FLAGS.rnn_type, dropout=dropout) for _ in
+                 range(num_rnn_layers)])
+            outputs, output_states = tf.nn.dynamic_rnn(cell=multirnn_cell_fw,
+                                                       inputs=rnn_input,
+                                                       sequence_length=seq_length,
+                                                       dtype=tf.float32,
+                                                       time_major=False
+                                                       )
+        else:
+            print("Bi-directional RNN")
+            multirnn_cell_fw = tf.contrib.rnn.MultiRNNCell(
+                [rnn_cell(rnn_cell_dim=rnn_cell_dim, layer_type=FLAGS.rnn_type, dropout=dropout) for _ in range(num_rnn_layers)])
+            multirnn_cell_bw = tf.contrib.rnn.MultiRNNCell(
+                [rnn_cell(rnn_cell_dim=rnn_cell_dim, layer_type=FLAGS.rnn_type, dropout=dropout) for _ in range(num_rnn_layers)])
+            outputs,output_states = tf.nn.bidirectional_dynamic_rnn(cell_fw = multirnn_cell_fw, cell_bw = multirnn_cell_bw,
+                                                        inputs=rnn_input,
+                                                        sequence_length=seq_length,
+                                                        dtype=tf.float32,
+                                                        time_major=False
+                                                        )
 
-        # Reshape outputs from 2 tensors each of shape [T, B, n_cell_dim]
-        # to a single tensor of shape [T*B, 2*n_cell_dim]
-        outputs = tf.concat(outputs, 2)
-        outputs = tf.reshape(outputs, [-1, 2 * rnn_cell_dim])
-        # print(outputs.get_shape())
+            # Reshape 2 tensors each [B, T, n_cell_dim] to one tensor [B, T, 2*n_cell_dim]
+            outputs = tf.concat(outputs, 2)
+            # print(outputs.get_shape())
     #-------------------------------------------------------------------------
-    else:
-        # Reshape from [T, B, FC] to [T*B, FC]
-        outputs = tf.reshape(outputs, [-1, fc])
+    if (FLAGS.row_conv and FLAGS.row_conv_width > 1):
+        print("Row convolution width={}".format(FLAGS.row_conv_width))
+        C = outputs.get_shape().as_list()[-1]
+        outputs = row_conv(name="row_conv", input=outputs,
+                       batch=batch_x_shape[0], channels=C, width=FLAGS.row_conv_width,
+                       training=training)
 
     #--- hidden layer with clipped RELU activation and dropout-----------------
 
+    # Reshape from [B, T, C] to [T, B, C]
+    outputs =  tf.transpose(outputs, [1, 0, 2])
+
     n_hidden_in = outputs.get_shape().as_list()[-1]
+    outputs = tf.reshape(outputs, [-1, n_hidden_in])
     h5 = variable_on_worker_level('h5', [n_hidden_in, n_hidden],
                    tf.contrib.layers.xavier_initializer(uniform=True),
                    trainable=True,
@@ -1852,7 +1901,7 @@ def train(server=None):
                         session_time += batch_time
                         # Uncomment the next line for debugging race conditions / distributed TF
                         log_debug('Finished batch step %d %f' %(current_step, batch_loss))
-                        if ((current_step % 10) == 0):
+                        if ((current_step % 100) == 0):
                             log_info('time: %s, step: %d, loss: %f lr: %f' %
                                       (format_duration(session_time), current_step, batch_loss, learn_rate)
                                      )
