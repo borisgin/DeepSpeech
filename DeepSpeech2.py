@@ -463,6 +463,7 @@ def batch_norm(name,
     normed = tf.nn.batch_normalization(input, batch_mean, batch_var, beta, gamma, bn_epsilon)
 
     '''
+    TODO: fix to standard BN
     g_mean = variable_on_worker_level(name + '/g_mean', shape=[n_channels],
                     initializer=tf.zeros_initializer,
                     trainable=False,
@@ -545,33 +546,28 @@ def row_conv(name,
     return output
 
 #===========================================================
-def rnn_cell(rnn_cell_dim = 1024, layer_type="gru", dropout=1.0):
-    if (layer_type=="lstm"):
-        cell = tf.contrib.rnn.BasicLSTMCell(rnn_cell_dim, forget_bias=1.0, state_is_tuple=True) \
-                       if 'reuse' not in inspect.getargspec(tf.contrib.rnn.BasicLSTMCell.__init__).args else \
-                       tf.contrib.rnn.BasicLSTMCell(rnn_cell_dim, forget_bias=1.0, state_is_tuple=True,
-                                                reuse=tf.get_variable_scope().reuse)
-        if (dropout < 1.0):
-            cell = tf.contrib.rnn.DropoutWrapper(cell, input_keep_prob= dropout, output_keep_prob= dropout,
-                                                     seed=FLAGS.random_seed)
-    elif (layer_type=="layernorm_lstm"):
+
+def rnn_cell(rnn_cell_dim, layer_type, dropout_keep_prob=1.0):
+    reuse=tf.get_variable_scope().reuse
+    if (layer_type=="layernorm_lstm"):
          cell = tf.contrib.rnn.LayerNormBasicLSTMCell(rnn_cell_dim, forget_bias=1.0,
-                                                                 dropout_keep_prob = dropout,
-                                                                 dropout_prob_seed = FLAGS.random_seed) \
-                if 'reuse' not in inspect.getargspec(tf.contrib.rnn.LayerNormBasicLSTMCell.__init__).args else \
-                tf.contrib.rnn.LayerNormBasicLSTMCell(rnn_cell_dim, forget_bias=1.0,
-                                                      dropout_keep_prob=dropout, dropout_prob_seed=FLAGS.random_seed,
-                                                      reuse=tf.get_variable_scope().reuse)
-    elif (layer_type=="gru"):
-        cell = tf.contrib.rnn.GRUCell(rnn_cell_dim) \
-            if 'reuse' not in inspect.getargspec(tf.contrib.rnn.GRUCell.__init__).args else \
-            tf.contrib.rnn.GRUCell(rnn_cell_dim, reuse=tf.get_variable_scope().reuse)
-        if (dropout < 1.0):
-            cell = tf.contrib.rnn.DropoutWrapper(cell, input_keep_prob=dropout, output_keep_prob=dropout,
-                                         seed=FLAGS.random_seed)
+                        dropout_keep_prob=dropout_keep_prob, dropout_prob_seed=FLAGS.random_seed,
+                        reuse=reuse)
+    else:
+        if (layer_type=="lstm"):
+            cell = tf.contrib.rnn.BasicLSTMCell(rnn_cell_dim, reuse=reuse)
+        elif (layer_type=="gru"):
+            cell = tf.contrib.rnn.GRUCell(rnn_cell_dim, reuse=reuse)
+        elif (layer_type=="cudnn_gru"):
+            cell = tf.contrib.cudnn_rnn.CudnnCompatibleGRUCell(rnn_cell_dim, reuse=reuse)
+        elif (layer_type == "cudnn_lstm"):
+            cell = tf.contrib.cudnn_rnn.CudnnCompatibleLSTMCell(rnn_cell_dim, reuse=reuse)
+        else:
+            print("Error: not supported rnn type:{}".format(layer_type))
 
+        if (dropout_keep_prob < 1.0):
+            cell = tf.contrib.rnn.DropoutWrapper(cell, output_keep_prob=dropout_keep_prob, seed=FLAGS.random_seed)
     return cell
-
 
 # =========================================================
 
@@ -580,7 +576,7 @@ def DeepSpeech2(batch_x, seq_length,training):
     DeepSpeech2-like model https://arxiv.org/pdf/1512.02595.pdf
     '''
 
-    dropout = FLAGS.dropout if training else 1.0
+    dropout_keep_prob = FLAGS.dropout if training else 1.0
 
     # Input shape: [B, T, F]
     batch_x_shape = tf.shape(batch_x)
@@ -653,10 +649,11 @@ def DeepSpeech2(batch_x, seq_length,training):
         rnn_input = outputs
         rnn_cell_dim = int(FLAGS.rnn_cell_dim)
         if rnn_unidirectional:
-            print("Uni-directional RNN")
+            print("Uni-directional RNN: num_layers={}, type={}, dim={}".format(num_rnn_layers,
+                                                                               FLAGS.rnn_type,rnn_cell_dim))
             multirnn_cell_fw = tf.contrib.rnn.MultiRNNCell(
-                [rnn_cell(rnn_cell_dim=rnn_cell_dim, layer_type=FLAGS.rnn_type, dropout=dropout) for _ in
-                 range(num_rnn_layers)])
+                [rnn_cell(rnn_cell_dim=rnn_cell_dim, layer_type=FLAGS.rnn_type, dropout_keep_prob=dropout_keep_prob)
+                 for _ in    range(num_rnn_layers)])
             outputs, output_states = tf.nn.dynamic_rnn(cell=multirnn_cell_fw,
                                                        inputs=rnn_input,
                                                        sequence_length=seq_length,
@@ -664,18 +661,20 @@ def DeepSpeech2(batch_x, seq_length,training):
                                                        time_major=False
                                                        )
         else:
-            print("Bi-directional RNN")
+            print("Bi-directional RNN: num_layers={}, type={}, dim={}".format(num_rnn_layers,
+                                                                              FLAGS.rnn_type,rnn_cell_dim))
             multirnn_cell_fw = tf.contrib.rnn.MultiRNNCell(
-                [rnn_cell(rnn_cell_dim=rnn_cell_dim, layer_type=FLAGS.rnn_type, dropout=dropout) for _ in range(num_rnn_layers)])
+                [rnn_cell(rnn_cell_dim=rnn_cell_dim, layer_type=FLAGS.rnn_type, dropout_keep_prob=dropout_keep_prob)
+                 for _ in range(num_rnn_layers)])
             multirnn_cell_bw = tf.contrib.rnn.MultiRNNCell(
-                [rnn_cell(rnn_cell_dim=rnn_cell_dim, layer_type=FLAGS.rnn_type, dropout=dropout) for _ in range(num_rnn_layers)])
-            outputs,output_states = tf.nn.bidirectional_dynamic_rnn(cell_fw = multirnn_cell_fw, cell_bw = multirnn_cell_bw,
+                [rnn_cell(rnn_cell_dim=rnn_cell_dim, layer_type=FLAGS.rnn_type, dropout_keep_prob=dropout_keep_prob)
+                 for _ in range(num_rnn_layers)])
+            outputs,output_states = tf.nn.bidirectional_dynamic_rnn(cell_fw=multirnn_cell_fw, cell_bw= multirnn_cell_bw,
                                                         inputs=rnn_input,
                                                         sequence_length=seq_length,
                                                         dtype=tf.float32,
                                                         time_major=False
                                                         )
-
             # Reshape 2 tensors each [B, T, n_cell_dim] to one tensor [B, T, 2*n_cell_dim]
             outputs = tf.concat(outputs, 2)
             # print(outputs.get_shape())
@@ -694,29 +693,29 @@ def DeepSpeech2(batch_x, seq_length,training):
 
     n_hidden_in = outputs.get_shape().as_list()[-1]
     outputs = tf.reshape(outputs, [-1, n_hidden_in])
-    h5 = variable_on_worker_level('h5', [n_hidden_in, n_hidden],
+    # fc1=[h5,b5]
+    fc1_w = variable_on_worker_level('fc1/w', [n_hidden_in, n_hidden],
                    tf.contrib.layers.xavier_initializer(uniform=True),
                    trainable=True,
                    regularizer=tf.contrib.layers.l2_regularizer(weight_decay) if (weight_decay > 0.) else None)
-    b5 = variable_on_worker_level('b5', [n_hidden],
+    fc1_b = variable_on_worker_level('fc1/b', [n_hidden],
                    tf.constant_initializer(0.),
                    trainable=True,
                    regularizer=tf.contrib.layers.l2_regularizer(weight_decay) if (weight_decay > 0.) else None)
-    outputs = tf.minimum(tf.nn.relu(tf.add(tf.matmul(outputs, h5), b5)), FLAGS.relu_clip)
-    outputs = tf.nn.dropout(outputs, dropout)
+    outputs = tf.minimum(tf.nn.relu(tf.add(tf.matmul(outputs, fc1_w), fc1_b)), FLAGS.relu_clip)
+    outputs = tf.nn.dropout(outputs, dropout_keep_prob)
 
     #--- creating the logits --------------------------------------------------
     #n_hidden = outputs.get_shape().as_list()[-1]
-    h6 = variable_on_worker_level('h6', [n_hidden, n_character],
+    fc2_w = variable_on_worker_level('fc2/w', [n_hidden, n_character],
                    tf.contrib.layers.xavier_initializer(uniform=True),
                    trainable=True,
                    regularizer=tf.contrib.layers.l2_regularizer(weight_decay) if (weight_decay > 0.) else None)
-    b6 = variable_on_worker_level('b6', [n_character],
+    fc2_b = variable_on_worker_level('fc2/b', [n_character],
                    tf.constant_initializer(0.),
                    trainable=True,
                    regularizer=tf.contrib.layers.l2_regularizer(weight_decay) if (weight_decay > 0.) else None)
-
-    outputs = tf.add(tf.matmul(outputs, h6), b6)
+    outputs = tf.add(tf.matmul(outputs, fc2_w), fc2_b)
 
     # reshape from  [T*B,A] --> [T, B, A].
     # Output shape: [n_steps, batch_size, n_character]
@@ -751,12 +750,10 @@ def mask_nans(x):
    x_mask  = tf.is_finite(x)
    y = tf.where(x_mask, x, x_zeros)
    return y
-# Accuracy and Loss
-# =================
 
-# In accord with 'Deep Speech: Scaling up end-to-end speech recognition'
-# (http://arxiv.org/abs/1412.5567),
-# the loss function used by our network should be the CTC loss function
+# ===============================================================
+
+# Accuracy and CTC loss function
 # (http://www.cs.toronto.edu/~graves/preprint.pdf).
 
 def calculate_mean_edit_distance_and_loss(model_feeder, tower, training):
