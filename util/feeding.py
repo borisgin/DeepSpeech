@@ -177,26 +177,33 @@ class _DataSetLoader(object):
                                                self._model_feeder.input_type,
                                                augmentation=self._data_set.augmentation)
 
-            source_len = len(source)
-
             # TODO: move fix ctc
+            num_features = self._model_feeder.numcep
 
+            source_len = len(source)
             min_len = target_len * self._model_feeder.reduction_factor
-
             if source_len < min_len:
                 numpad = (min_len + 1 - source_len) // 2
                 #numpad = min_len - source_len
                 print('char_len={} audio_len={} pad={}'.format(target_len, len(source), numpad))
-                pad = np.zeros([numpad, self._model_feeder.numcep])
-                source = np.concatenate((pad, source, pad))
+                pad_shape = [numpad, num_features]
+                start_pad = np.broadcast_to(source[0, :], pad_shape)
+                end_pad = np.broadcast_to(source[-1, :], pad_shape)
+                source = np.concatenate((start_pad, source, end_pad))
+                #pad = np.zeros([numpad, self._model_feeder.numcep])
+                #source = np.concatenate((pad, source, pad))
                 #source = np.concatenate((source, pad))
 
+            #-----pad from both ends-----------------------------------
+            numpad = self._model_feeder.numpad
+            pad_shape = [numpad, num_features]
+            start_pad = np.broadcast_to(source[0, :], pad_shape)
+            end_pad = np.broadcast_to(source[-1, :], pad_shape)
+            source = np.concatenate((start_pad, source, end_pad))
+            #pad = np.zeros([self._model_feeder.numpad , self._model_feeder.numcep])
+            #source = np.concatenate((pad, source, pad))
 
-            # pad from both ends
-            pad = np.zeros([self._model_feeder.numpad , self._model_feeder.numcep])
-            source = np.concatenate((pad, source, pad))
-            # end of hack 
-
+            #--------------------------------------------------------------
 
             #if source_len // self._model_feeder.reduction_factor < target_len:
             #    print("audio {}, chars {}".format(source.shape, target_len))

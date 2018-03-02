@@ -722,30 +722,30 @@ def DeepSpeech2(batch_x, seq_length,training):
     #--- hidden layer with dropout-----------------
 
     n_hidden_in = outputs.get_shape().as_list()[-1]
-    h5 = variable_on_worker_level('h5', [n_hidden_in, n_hidden],
+    fc1_w = variable_on_worker_level('fc1/w', [n_hidden_in, n_hidden],
                    tf.contrib.layers.xavier_initializer(uniform=True),
                    trainable=True,
                    regularizer=tf.contrib.layers.l2_regularizer(weight_decay) if (weight_decay > 0.) else None)
-    b5 = variable_on_worker_level('b5', [n_hidden],
+    fc1_b = variable_on_worker_level('fc1/b', [n_hidden],
                    tf.constant_initializer(0.),
                    trainable=True,
                    regularizer=tf.contrib.layers.l2_regularizer(weight_decay) if (weight_decay > 0.) else None)
     # outputs = tf.minimum(tf.nn.relu(tf.add(tf.matmul(outputs, h5), b5)), FLAGS.relu_clip)
-    outputs = tf.nn.relu(tf.add(tf.matmul(outputs, h5), b5))
+    outputs = tf.nn.relu(tf.add(tf.matmul(outputs, fc1_w), fc1_b))
     outputs = tf.nn.dropout(outputs, dropout)
 
     #--- creating the logits --------------------------------------------------
     #n_hidden = outputs.get_shape().as_list()[-1]
-    h6 = variable_on_worker_level('h6', [n_hidden, n_character],
+    fc2_w = variable_on_worker_level('fc2/w', [n_hidden, n_character],
                    tf.contrib.layers.xavier_initializer(uniform=True),
                    trainable=True,
                    regularizer=tf.contrib.layers.l2_regularizer(weight_decay) if (weight_decay > 0.) else None)
-    b6 = variable_on_worker_level('b6', [n_character],
+    fc2_b = variable_on_worker_level('fc2/b', [n_character],
                    tf.constant_initializer(0.),
                    trainable=True,
                    regularizer=tf.contrib.layers.l2_regularizer(weight_decay) if (weight_decay > 0.) else None)
 
-    outputs = tf.add(tf.matmul(outputs, h6), b6)
+    outputs = tf.add(tf.matmul(outputs, fc2_w), fc2_b)
 
     # reshape from  [T*B,A] --> [T, B, A].
     # Output shape: [n_steps, batch_size, n_character]

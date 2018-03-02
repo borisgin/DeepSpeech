@@ -20,7 +20,7 @@ if [ ! -d "$SUMMARY_DIR" ]; then
   mkdir  ${SUMMARY_DIR}
 fi
 
-cp bin/train_librispeech.sh  ${LOG_DIR}
+cp bin/train_ds3x3_librispeech.sh  ${LOG_DIR}
 
 LOG_FILE=${LOG_DIR}/${EXPERIMENT}_$(date +%Y%m%d_%H%M).txt
 echo Logging the experiment to $LOG_FILE
@@ -32,9 +32,9 @@ CONFIG="\
   --input_type logfbank \
   --num_audio_features 64 \
   --num_pad 20 \
-  --augment False \
+  --augment=False \
   --num_conv_layers 10 \
-  --conv_maxpool_fusion True \
+  --conv_maxpool_fusion=True \
   --num_rnn_layers 0 \
   --n_hidden 2048 \
   --train_batch_size 16 \
@@ -48,9 +48,9 @@ CONFIG="\
   --decay_power 2.0 \
   --decay_steps 5000 \
   --decay_rate 0.9 \
-  --display_step 20 \
+  --display_step 100 \
   --validation_step 5 \
-  --dropout_keep_prob 1.0 \
+  --dropout_keep_prob 0.5 \
   --weight_decay 0.0001 \
   --checkpoint_dir ${CHECKPOINT_DIR} \
   --checkpoint_secs 18000 \
