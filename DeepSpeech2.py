@@ -400,70 +400,20 @@ def variable_on_worker_level(name, shape, initializer, trainable=True, regulariz
                               regularizer=regularizer)
     return var
 
-'''
-class CustomRNNCell2(tf.contrib.rnn.BasicRNNCell):
-    """ This is a customRNNCell2 that allows the weights
-    to be re-used on multiple devices. In particular, the Matrix of weights is
-    set using _variable_on_cpu.
-    The default version of the BasicRNNCell, did not support the ability to
-    pin weights on one device (say cpu).
-    """
-
-    def __init__(self, num_units, input_size=None):
-        self._num_units = num_units
-
-    def __call__(self, inputs, state, scope=None):
-        """Most basic RNN:
-        output = new_state = activation(BN(W * input) + U * state + B).
-        state dim: batch_size * num_units
-        input dim: batch_size * feature_size
-        W: feature_size * num_units
-        U: num_units * num_units
-        """
-        with tf.variable_scope(scope or type(self).__name__):
-            # print "rnn cell input size: ", inputs.get_shape().as_list()
-            # print "rnn cell state size: ", state.get_shape().as_list()
-            wsize = inputs.get_shape()[1]
-            w =  variable_on_worker_level('RNN_W', [self._num_units, wsize], tf.contrib.layers.xavier_initializer(uniform=False))
-
-            res1 = tf.matmul(inputs, w, transpose_a=False, transpose_b=True)
-            # batch_size * num_units
-            #bn = seq_batch_norm(y)
-            # bn_resi = resi
-            usize = state.get_shape()[1]
-            u = variable_on_worker_level('RNN_U', [self._num_units, wsize], tf.contrib.layers.xavier_initializer(uniform=False))
-            #u = _variable_on_cpu('U', [self._num_units, usize], initializer=tf.constant_initializer(0.0001))
-            res2 = tf.matmul(state, u, transpose_a=False, transpose_b=True)
-            # res_nb = tf.add_n([bn_resi, resu])
-            res3 = tf.add(res1, res2)
-            bias = variable_on_worker_level('RNN_B', [self._num_units], tf.constant_initializer(0))
-            #bias = _variable_on_cpu('B', [self._num_units], tf.constant_initializer(0), use_fp16=self.use_fp16)
-            res = tf.nn.bias_add(res3, bias)
-            output = tf.minimum(tf.nn.relu(res), FLAGS.relu_clip)
-            #output = relux(res, capping=20)
-        return output, output
-'''
 # =========================================================
-
-def batch_norm(name,
-               input,
-               training = True):
-    n_channels = input.get_shape()[-1]
-    bn_momentum = 0.95
-    bn_epsilon = 0.001
-    beta = variable_on_worker_level(name + '/beta',  shape=[n_channels],
-                   initializer=tf.zeros_initializer,
-                   trainable=True,
-                   regularizer=tf.contrib.layers.l2_regularizer(weight_decay) if (weight_decay > 0.0) else None)
-    gamma = variable_on_worker_level(name + '/gamma',  shape=[n_channels],
-                   initializer=tf.ones_initializer,
-                   trainable=True,
-                   regularizer=tf.contrib.layers.l2_regularizer(weight_decay) if (weight_decay > 0.0) else None)
-    batch_mean, batch_var = tf.nn.moments(input, [0, 1, 2])
-    normed = tf.nn.batch_normalization(input, batch_mean, batch_var, beta, gamma, bn_epsilon)
-
-    '''
+'''
     TODO: fix to standard BN
+    #------------------------------------------------------
+        output=tf.layers.batch_normalization(
+        inputs=input,
+        momentum=0.95,
+        center=True,
+        scale=True,
+        epsilon=0.0001,
+        training=training,
+        name=name
+    )
+    #======================================================================
     g_mean = variable_on_worker_level(name + '/g_mean', shape=[n_channels],
                     initializer=tf.zeros_initializer,
                     trainable=False,
@@ -482,12 +432,27 @@ def batch_norm(name,
     else:
         mean = batch_mean #g_mean
         var  = batch_var  #g_var
-    normed = tf.nn.batch_normalization(input, mean, var, beta, gamma, bn_epsilon)
-    '''
-    return normed
+    output = tf.nn.batch_normalization(input, mean, var, beta, gamma, bn_epsilon)
+'''
+def batch_norm(name, input, training = True):
+    n_channels = input.get_shape()[-1]
+    variance_epsilon = 0.001
+    beta = variable_on_worker_level(name + '/beta',  shape=[n_channels],
+                   initializer=tf.zeros_initializer,
+                   trainable=True,
+                   regularizer=None)
+    gamma = variable_on_worker_level(name + '/gamma',  shape=[n_channels],
+                   initializer=tf.ones_initializer,
+                   trainable=True,
+                   regularizer=tf.contrib.layers.l2_regularizer(weight_decay) if (weight_decay > 0.0) else None)
+    batch_mean, batch_var = tf.nn.moments(input, [0, 1, 2])
+    output = tf.nn.batch_normalization(x=input,
+                                       mean=batch_mean, variance=batch_var,
+                                       offset=beta, scale=gamma,
+                                       variance_epsilon=variance_epsilon)
+    return output
 
-# =========================================================
-
+# ============================================================
 def conv2D(name,
            input,
            in_channels = 1,
@@ -495,53 +460,49 @@ def conv2D(name,
            kernel_size=[3,3],
            strides=[1,1],
            padding='SAME',
-           activation_fn=lambda x: tf.minimum(tf.nn.relu(x), FLAGS.relu_clip),
+#           activation_fn=lambda x: tf.minimum(tf.nn.relu(x), FLAGS.relu_clip),
+           activation_fn=lambda x: tf.nn.relu(x),
            weights_initializer=tf.contrib.layers.xavier_initializer(uniform=False),
            bias_initializer=tf.zeros_initializer(),
            training = True
            ):
-    #filter_shape= [kernel_size[0], kernel_size[1], in_channels, output_channels]
+
     w = variable_on_worker_level(name+'/w',
                    shape = [kernel_size[0], kernel_size[1], in_channels, output_channels],
-                   initializer=weights_initializer, trainable=True,
-                   regularizer=tf.contrib.layers.l2_regularizer(weight_decay) if (weight_decay > 0.) else None)
-
-    b = variable_on_worker_level(name+'/b',
-                   shape=[output_channels],
-                   initializer=bias_initializer, trainable=True,
+                   initializer=weights_initializer,
+                   trainable=True,
                    regularizer=tf.contrib.layers.l2_regularizer(weight_decay) if (weight_decay > 0.) else None)
 
     s = [1, strides[0], strides[1], 1]
     y = tf.nn.conv2d(input, w, s, padding)
-    y = batch_norm(name+'_bn', y , training = training)
+    y = batch_norm(name+'/bn', y, training = training)
+    '''
+    b = variable_on_worker_level(name+'/b',
+                   shape=[output_channels],
+                   initializer=bias_initializer, 
+                   trainable=True, regularizer= None)
     y = tf.nn.bias_add(y, b)
+    '''
     output = activation_fn(y)
     return output
 
 # ==========================================================
-def row_conv(name,
-           input,
-           batch,
-           channels,
-           width,
+def row_conv(name, input, batch, channels, width,
            activation_fn=lambda x: tf.nn.relu(x),
            weights_initializer=tf.contrib.layers.xavier_initializer_conv2d(),
            training = True
            ):
-    #filter_shape= [widht, 1, in_channels, 1]
+
+    x=tf.reshape(input, [batch,-1,1,channels])
 
     w = variable_on_worker_level(name+'/w',
                     shape = [width, 1, channels, 1],
-    #               shape = [1, width,  channels, 1],
                    initializer=weights_initializer, trainable=True,
                    regularizer=tf.contrib.layers.l2_regularizer(weight_decay) if (weight_decay > 0.) else None)
-
-
-    x=tf.reshape(input, [batch,-1,1,channels])
     y = tf.nn.depthwise_conv2d(input=x, filter=w, strides=[1, 1, 1, 1], padding='SAME', data_format='NHWC')
-    y = batch_norm(name + '_bn', y, training=training)
+    y = batch_norm(name + '/bn', y, training=training)
     y = activation_fn(y)
-    #y=x
+
     output = tf.reshape(y, [batch,-1,channels])
     return output
 
@@ -623,7 +584,7 @@ def DeepSpeech2(batch_x, seq_length,training):
             seq_length = (seq_length - kernel_size[0] + strides[0]) // strides[0]
             f_out = (f_out - kernel_size[1]+strides[1]) // strides[1]
         else:
-            seq_length = (seq_length + strides[0]-1) // strides[0]
+            seq_length = (seq_length + strides[0] - 1) // strides[0]
             f_out = (f_out + strides[1] -  1) // strides[1]
         print('{}: kernel={} stride={} ch=[{}, {}] f_out={}'.format(
             name, kernel_size, strides, ch_in, ch_out, f_out))
@@ -642,7 +603,7 @@ def DeepSpeech2(batch_x, seq_length,training):
     F = conv.get_shape().as_list()[2]
     C = conv.get_shape().as_list()[3]
     fc = F*C
-    outputs = tf.reshape(conv, [B , -1 , fc])
+    outputs = tf.reshape(conv, [B, -1, fc])
 
     # ----- RNN ---------------------------------------------------------------
     if (num_rnn_layers > 0):
@@ -650,10 +611,11 @@ def DeepSpeech2(batch_x, seq_length,training):
         rnn_cell_dim = int(FLAGS.rnn_cell_dim)
         if rnn_unidirectional:
             print("Uni-directional RNN: num_layers={}, type={}, dim={}".format(num_rnn_layers,
-                                                                               FLAGS.rnn_type,rnn_cell_dim))
+                                                                         FLAGS.rnn_type,rnn_cell_dim))
             multirnn_cell_fw = tf.contrib.rnn.MultiRNNCell(
                 [rnn_cell(rnn_cell_dim=rnn_cell_dim, layer_type=FLAGS.rnn_type, dropout_keep_prob=dropout_keep_prob)
                  for _ in    range(num_rnn_layers)])
+
             outputs, output_states = tf.nn.dynamic_rnn(cell=multirnn_cell_fw,
                                                        inputs=rnn_input,
                                                        sequence_length=seq_length,
@@ -662,23 +624,24 @@ def DeepSpeech2(batch_x, seq_length,training):
                                                        )
         else:
             print("Bi-directional RNN: num_layers={}, type={}, dim={}".format(num_rnn_layers,
-                                                                              FLAGS.rnn_type,rnn_cell_dim))
+                                                                        FLAGS.rnn_type,rnn_cell_dim))
             multirnn_cell_fw = tf.contrib.rnn.MultiRNNCell(
                 [rnn_cell(rnn_cell_dim=rnn_cell_dim, layer_type=FLAGS.rnn_type, dropout_keep_prob=dropout_keep_prob)
                  for _ in range(num_rnn_layers)])
             multirnn_cell_bw = tf.contrib.rnn.MultiRNNCell(
                 [rnn_cell(rnn_cell_dim=rnn_cell_dim, layer_type=FLAGS.rnn_type, dropout_keep_prob=dropout_keep_prob)
                  for _ in range(num_rnn_layers)])
+
             outputs,output_states = tf.nn.bidirectional_dynamic_rnn(cell_fw=multirnn_cell_fw, cell_bw= multirnn_cell_bw,
                                                         inputs=rnn_input,
                                                         sequence_length=seq_length,
                                                         dtype=tf.float32,
                                                         time_major=False
                                                         )
-            # Reshape 2 tensors each [B, T, n_cell_dim] to one tensor [B, T, 2*n_cell_dim]
+            # reshape: 2 x [B, T, n_cell_dim] --> [B, T, 2*n_cell_dim]
             outputs = tf.concat(outputs, 2)
-            # print(outputs.get_shape())
-    #-------------------------------------------------------------------------
+
+    #----Row-conv----------------------------------------------------------
     if (FLAGS.row_conv and FLAGS.row_conv_width > 1):
         print("Row convolution width={}".format(FLAGS.row_conv_width))
         C = outputs.get_shape().as_list()[-1]
@@ -686,11 +649,10 @@ def DeepSpeech2(batch_x, seq_length,training):
                        batch=batch_x_shape[0], channels=C, width=FLAGS.row_conv_width,
                        training=training)
 
-    #--- hidden layer with clipped RELU activation and dropout-----------------
-
-    # Reshape from [B, T, C] to [T, B, C]
+    #---- reshape: [B, T, C] --> [T, B, C] --------------------------------
     outputs =  tf.transpose(outputs, [1, 0, 2])
 
+    #--- hidden layer with clipped RELU activation and dropout-------------
     n_hidden_in = outputs.get_shape().as_list()[-1]
     outputs = tf.reshape(outputs, [-1, n_hidden_in])
     # fc1=[h5,b5]
@@ -700,12 +662,11 @@ def DeepSpeech2(batch_x, seq_length,training):
                    regularizer=tf.contrib.layers.l2_regularizer(weight_decay) if (weight_decay > 0.) else None)
     fc1_b = variable_on_worker_level('fc1/b', [n_hidden],
                    tf.constant_initializer(0.),
-                   trainable=True,
-                   regularizer=tf.contrib.layers.l2_regularizer(weight_decay) if (weight_decay > 0.) else None)
+                   trainable=True, regularizer= None)
     outputs = tf.minimum(tf.nn.relu(tf.add(tf.matmul(outputs, fc1_w), fc1_b)), FLAGS.relu_clip)
     outputs = tf.nn.dropout(outputs, dropout_keep_prob)
 
-    #--- creating the logits --------------------------------------------------
+    #--- logits --------------------------------------------------
     #n_hidden = outputs.get_shape().as_list()[-1]
     fc2_w = variable_on_worker_level('fc2/w', [n_hidden, n_character],
                    tf.contrib.layers.xavier_initializer(uniform=True),
@@ -713,15 +674,14 @@ def DeepSpeech2(batch_x, seq_length,training):
                    regularizer=tf.contrib.layers.l2_regularizer(weight_decay) if (weight_decay > 0.) else None)
     fc2_b = variable_on_worker_level('fc2/b', [n_character],
                    tf.constant_initializer(0.),
-                   trainable=True,
-                   regularizer=tf.contrib.layers.l2_regularizer(weight_decay) if (weight_decay > 0.) else None)
+                   trainable=True, regularizer= None)
     outputs = tf.add(tf.matmul(outputs, fc2_w), fc2_b)
-
-    # reshape from  [T*B,A] --> [T, B, A].
-    # Output shape: [n_steps, batch_size, n_character]
+    #--- reshape: [T*B,A] --> [T, B, A] ---------------------------
+    # output format: [n_steps, batch_size, n_character]
     logits = tf.reshape(outputs, [-1, batch_x_shape[0], n_character], name="logits")
 
-    return logits , seq_length
+    return logits, seq_length
+#================================================================================
 
 if not os.path.exists(os.path.abspath(FLAGS.decoder_library_path)):
     print('ERROR: The decoder library file does not exist. Make sure you have ' \

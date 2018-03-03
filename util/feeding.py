@@ -195,13 +195,14 @@ class _DataSetLoader(object):
             start_pad = np.broadcast_to(source[0, :], pad_shape)
             end_pad = np.broadcast_to(source[-1, :], pad_shape)
             source = np.concatenate((start_pad, source, end_pad))
+
             #if source_len // self._model_feeder.reduction_factor < target_len:
             #    print("audio {}, chars {}".format(source.shape, target_len))
             #    raise ValueError('Error: Audio file {} is too short for transcription.'.format(wav_file))
 
             try:
                 session.run(self._enqueue_op, feed_dict={ self._model_feeder.ph_x: source,
-                                                          self._model_feeder.ph_x_length: source_len,
+                                                          self._model_feeder.ph_x_length: len(source),
                                                           self._model_feeder.ph_y: target,
                                                           self._model_feeder.ph_y_length: target_len })
             except tf.errors.CancelledError:
