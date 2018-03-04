@@ -4,7 +4,7 @@ export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:/usr/local/cuda-9.0/extras/CUPT
 export COMPUTE_DATA_DIR=/data/speech/LibriSpeech
 export LM_DIR=/data/speech/LM
 
-export EXPERIMENT=DS2U-LS-F161-C3x32x64x96xs221-UniRx2x1024-RowConvx8-H2048-B16x8_drop0.5_aug
+export EXPERIMENT=DS2UNI-LS-F161-C3x32x64x96xs221-GRU_uni_2x1024-RowConvx8-H2048-B16x8_drop0.5_aug
 
 export LOG_DIR=/ds2/experiments/${EXPERIMENT}
 export CHECKPOINT_DIR=${LOG_DIR}/checkpoints
@@ -29,32 +29,26 @@ CONFIG="\
   --train_files ${COMPUTE_DATA_DIR}/librivox-train-clean-100.csv,${COMPUTE_DATA_DIR}/librivox-train-clean-360.csv,${COMPUTE_DATA_DIR}/librivox-train-other-500.csv \
   --dev_files ${COMPUTE_DATA_DIR}/librivox-dev-clean.csv \
   --test_files ${COMPUTE_DATA_DIR}/librivox-test-clean.csv \
-  --input_type spectrogram \
-  --num_audio_features 161 \
-  --augment=True \
+  --input_type spectrogram --num_audio_features 161 \
+  --augment=True --time_stretch_ratio 0.05 --noise_level_max -46 \
   --num_conv_layers 3 \
   --rnn_unidirectional=True \
-  --rnn_type gru \
-  --num_rnn_layers 2 \
-  --rnn_cell_dim 1024 \
-  --row_conv=True \
-  --row_conv_width 8 \
+  --rnn_type cudnn_gru  --num_rnn_layers 2  --rnn_cell_dim 1024 \
+  --row_conv=True --row_conv_width 8 \
   --n_hidden 2048 \
   --train_batch_size 16 \
-  --dev_batch_size  16 \
-  --test_batch_size 16 \
+  --dev_batch_size  16 --test_batch_size 16 \
   --epoch 100 \
   --early_stop 0 \
   --optimizer adam \
   --learning_rate 0.0001 \
   --decay_steps 5000 \
   --decay_rate 0.9 \
-  --display_step 10 \
-  --validation_step 5 \
+  --display_step 10 --validation_step 5 \
   --dropout_keep_prob 0.5 \
   --weight_decay 0.0005 \
   --checkpoint_dir ${CHECKPOINT_DIR} \
-  --checkpoint_secs 18000 \
+  --checkpoint_secs 9000 \
   --summary_dir ${SUMMARY_DIR} \
   --summary_secs 600 \
   --lm_binary_path ${LM_DIR}/mozilla-lm.binary \

@@ -200,6 +200,7 @@ class _DataSetLoader(object):
             #    print("audio {}, chars {}".format(source.shape, target_len))
             #    raise ValueError('Error: Audio file {} is too short for transcription.'.format(wav_file))
 
+            #print(source.shape, len(source))
             try:
                 session.run(self._enqueue_op, feed_dict={ self._model_feeder.ph_x: source,
                                                           self._model_feeder.ph_x_length: len(source),
