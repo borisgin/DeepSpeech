@@ -211,7 +211,7 @@ class _DataSetLoader(object):
 
             try:
                 session.run(self._enqueue_op, feed_dict={ self._model_feeder.ph_x: source,
-                                                          self._model_feeder.ph_x_length: source_len,
+                                                          self._model_feeder.ph_x_length: len(source),
                                                           self._model_feeder.ph_y: target,
                                                           self._model_feeder.ph_y_length: target_len })
             except tf.errors.CancelledError:
