@@ -34,7 +34,7 @@ CONFIG="\
   --num_pad 10 \
   --augment=True \
   --time_stretch_ratio 0.05 \
-  --noise_level_max 60 \
+  --noise_level_max -60 \
   --num_conv_layers 10 \
   --conv_maxpool_fusion=True \
   --num_rnn_layers 0 \

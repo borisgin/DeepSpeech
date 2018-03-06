@@ -1953,7 +1953,7 @@ def train(server=None):
                         session_time += batch_time
                         # Uncomment the next line for debugging race conditions / distributed TF
                         log_debug('Finished batch step %d %f' %(current_step, batch_loss))
-                        if ((current_step % 100) == 0):
+                        if ((current_step % 10) == 0):
                             log_info('time: %s, step: %d, loss: %f lr: %f' %
                                       (format_duration(session_time), current_step, batch_loss, learn_rate)
                                      )
