@@ -6,6 +6,7 @@ import tensorflow as tf
 import re
 
 from six.moves import range
+from six import string_types
 from functools import reduce
 
 class Alphabet(object):
@@ -32,15 +33,16 @@ class Alphabet(object):
     def size(self):
         return self._size
 
+
 def text_to_char_array(original, alphabet):
     r"""
     Given a Python string ``original``, remove unsupported characters, map characters
     to integers and return a numpy array representing the processed string.
     """
-    try:
+    if isinstance(original, string_types):
         output = np.asarray([alphabet.label_from_string(c) for c in original])
-    except:
-        print("Exception: text_to_char {} {}".format(type(original), original))
+    else:
+        print("Exception: text_to_char {}".format(original))
         output=np.asarray([])
     return output
 
