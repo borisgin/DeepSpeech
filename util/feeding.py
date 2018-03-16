@@ -34,6 +34,7 @@ class ModelFeeder(object):
         self.train = train_set
         self.dev = dev_set
         self.test = test_set
+        self.mode = 0
         self.sets = [train_set, dev_set, test_set]
         self.numcep = numcep
         self.numcontext = numcontext
@@ -47,6 +48,7 @@ class ModelFeeder(object):
         self.ph_x_length = tf.placeholder(tf.int32, [])
         self.ph_y = tf.placeholder(tf.int32, [None,])
         self.ph_y_length = tf.placeholder(tf.int32, [])
+
         self.ph_batch_size = tf.placeholder(tf.int32, [])
         self.ph_queue_selector = tf.placeholder(tf.int32, name='Queue_Selector')
 
@@ -76,8 +78,11 @@ class ModelFeeder(object):
         '''
         index = self.sets.index(data_set)
         assert index >= 0
+        self.mode = index
+
         feed_dict[self.ph_queue_selector] = index
         feed_dict[self.ph_batch_size] = data_set.batch_size
+
 
     def next_batch(self, tower_feeder_index):
         '''
@@ -129,7 +134,9 @@ class _DataSetLoader(object):
         self.queue = tf.PaddingFIFOQueue(shapes=[[None, model_feeder.numcep + (2 * model_feeder.numcep * model_feeder.numcontext)], [], [None,], []],
                                                   dtypes=[tf.float32, tf.int32, tf.int32, tf.int32],
                                                   capacity=data_set.batch_size * 2)
-        self._enqueue_op = self.queue.enqueue([model_feeder.ph_x, model_feeder.ph_x_length, model_feeder.ph_y, model_feeder.ph_y_length])
+
+        self._enqueue_op = self.queue.enqueue([model_feeder.ph_x, model_feeder.ph_x_length,
+                                               model_feeder.ph_y, model_feeder.ph_y_length  ])
         self._close_op = self.queue.close(cancel_pending_enqueues=True)
         self._alphabet = alphabet
 
@@ -201,11 +208,13 @@ class _DataSetLoader(object):
             #    raise ValueError('Error: Audio file {} is too short for transcription.'.format(wav_file))
 
             #print(source.shape, len(source))
+
             try:
                 session.run(self._enqueue_op, feed_dict={ self._model_feeder.ph_x: source,
                                                           self._model_feeder.ph_x_length: len(source),
                                                           self._model_feeder.ph_y: target,
-                                                          self._model_feeder.ph_y_length: target_len })
+                                                          self._model_feeder.ph_y_length: target_len
+                                                          })
             except tf.errors.CancelledError:
                 return
 
@@ -229,7 +238,7 @@ class _TowerFeeder(object):
         '''
         source, source_lengths, target, target_lengths = self._queue.dequeue_many(self._model_feeder.ph_batch_size)
         sparse_labels = ctc_label_dense_to_sparse(target, target_lengths, self._model_feeder.ph_batch_size)
-        return source, source_lengths, sparse_labels
+        return source, source_lengths, sparse_labels, self._model_feeder.ph_queue_selector
 
     def start_queue_threads(self, session, coord):
         '''

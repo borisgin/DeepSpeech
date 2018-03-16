@@ -25,7 +25,7 @@ from tensorflow.python.tools import freeze_graph
 from threading import Thread, Lock
 from util.audio import audiofile_to_input_vector
 from util.feeding import DataSet, ModelFeeder
-from util.gpu import get_available_gpus
+from util.gpu import get_available_gpus, get_available_cpus
 from util.shared_lib import check_cupti
 from util.text import sparse_tensor_value_to_texts, wer, Alphabet, ndarray_to_text, levenshtein
 from xdg import BaseDirectory as xdg
@@ -228,6 +228,11 @@ def initialize_globals():
     num_gpus=len(available_devices)
     print("Found %d GPUs" % num_gpus)
 
+    global available_cpus
+    available_cpus=get_available_cpus()
+    num_cpus = len(available_cpus)
+    print("Found %d CPUs" % num_cpus)
+
     # If there is no GPU available, we fall back to CPU based operation
     if 0 == len(available_devices):
         print("Warning: no GPU found, switch to CPU")
@@ -401,40 +406,8 @@ def variable_on_worker_level(name, shape, initializer, trainable=True, regulariz
     return var
 
 # =========================================================
-'''
-    TODO: fix to standard BN
-    #------------------------------------------------------
-        output=tf.layers.batch_normalization(
-        inputs=input,
-        momentum=0.95,
-        center=True,
-        scale=True,
-        epsilon=0.0001,
-        training=training,
-        name=name
-    )
-    #======================================================================
-    g_mean = variable_on_worker_level(name + '/g_mean', shape=[n_channels],
-                    initializer=tf.zeros_initializer,
-                    trainable=False,
-                    regularizer= None)
-    g_var = variable_on_worker_level(name + '/g_var', shape=[n_channels],
-                    initializer=tf.ones_initializer,
-                    trainable=False,
-                    regularizer= None)
-    batch_mean, batch_var = tf.nn.moments(input, [0, 1, 2])    
-    if (training):
-        batch_mean, batch_var = tf.nn.moments(input, [0, 1, 2])
-        g_mean = g_mean * bn_momentum + batch_mean * (1.0 - bn_momentum)
-        g_var  = g_var  * bn_momentum + batch_mean * (1.0 - bn_momentum)
-        mean = batch_mean
-        var  = batch_var
-    else:
-        mean = batch_mean #g_mean
-        var  = batch_var  #g_var
-    output = tf.nn.batch_normalization(input, mean, var, beta, gamma, bn_epsilon)
-'''
-def batch_norm(name, input, training = True):
+
+def batch_norm(name, input, training, momentum=0.90):
     n_channels = input.get_shape()[-1]
     variance_epsilon = 0.001
     beta = variable_on_worker_level(name + '/beta',  shape=[n_channels],
@@ -445,11 +418,38 @@ def batch_norm(name, input, training = True):
                    initializer=tf.ones_initializer,
                    trainable=True,
                    regularizer=tf.contrib.layers.l2_regularizer(weight_decay) if (weight_decay > 0.0) else None)
-    batch_mean, batch_var = tf.nn.moments(input, [0, 1, 2])
-    output = tf.nn.batch_normalization(x=input,
-                                       mean=batch_mean, variance=batch_var,
-                                       offset=beta, scale=gamma,
-                                       variance_epsilon=variance_epsilon)
+
+    global_mean = variable_on_worker_level(name + '/g_mean', shape=[n_channels],
+                                      initializer= tf.zeros_initializer,
+                                      trainable=False,
+                                      regularizer=None)
+    global_var = variable_on_worker_level(name + '/g_var', shape=[n_channels],
+                                     initializer= tf.ones_initializer,
+                                     trainable=False,
+                                     regularizer=None)
+
+    def bn_train():
+        batch_mean, batch_var = tf.nn.moments(input, [0, 1, 2])
+        train_mean= tf.assign(global_mean, global_mean*momentum + batch_mean*(1-momentum))
+        train_var = tf.assign(global_var,  global_var*momentum + batch_var*(1-momentum))
+    #    train_mean = tf.assign(global_mean,  batch_mean )
+    #    train_var = tf.assign(global_var,  batch_var)
+
+        with tf.control_dependencies([train_mean, train_var]):
+            output = tf.nn.batch_normalization(x=input,
+                                           mean=batch_mean, variance=batch_var,
+                                           offset=beta, scale=gamma,
+                                           variance_epsilon=variance_epsilon)
+        return output
+
+    def bn_val():
+        output = tf.nn.batch_normalization(x=input,
+                                           mean=global_mean, variance=global_var,
+                                           offset=beta, scale=gamma,
+                                           variance_epsilon=variance_epsilon)
+        return output
+
+    output = tf.cond(tf.equal(training, 0), bn_train, bn_val)
     return output
 
 # ============================================================
@@ -526,18 +526,22 @@ def rnn_cell(rnn_cell_dim, layer_type, dropout_keep_prob=1.0):
         else:
             print("Error: not supported rnn type:{}".format(layer_type))
 
-        if (dropout_keep_prob < 1.0):
-            cell = tf.contrib.rnn.DropoutWrapper(cell, output_keep_prob=dropout_keep_prob, seed=FLAGS.random_seed)
+        cell = tf.contrib.rnn.DropoutWrapper(cell, output_keep_prob=dropout_keep_prob, seed=FLAGS.random_seed)
+
     return cell
 
 # =========================================================
 
-def DeepSpeech2(batch_x, seq_length,training):
+def DeepSpeech2(batch_x, seq_length, training):
     r'''
     DeepSpeech2-like model https://arxiv.org/pdf/1512.02595.pdf
     '''
+    #print(type(training))
+    #print(training)
 
-    dropout_keep_prob = FLAGS.dropout if training else 1.0
+    #dropout_keep_prob = FLAGS.dropout_keep_prob if training else 1.0
+ #   dropout_keep_prob = tf.cond(tf.equal(training,tf.constant(0)), lambda: FLAGS.dropout_keep_prob, lambda: 1.0)
+    dropout_keep_prob = tf.cond(tf.equal(training, 0), lambda: FLAGS.dropout_keep_prob, lambda: 1.0)
 
     # Input shape: [B, T, F]
     batch_x_shape = tf.shape(batch_x)
@@ -723,12 +727,14 @@ def calculate_mean_edit_distance_and_loss(model_feeder, tower, training):
     the decoded result and the batch's original Y.
     '''
     # Obtain the next batch of data
-    batch_x, batch_seq_len, batch_y = model_feeder.next_batch(tower)
+    batch_x, batch_seq_len, batch_y, mode = model_feeder.next_batch(tower)
+    print(mode)
+    print(type(mode))
 
     # Calculate the logits of the batch using BiRNN
  #   logits, batch_seq_len = DeepSpeech2(batch_x, tf.to_int64(batch_seq_len), dropout)
 
-    logits, batch_seq_len = DeepSpeech2(batch_x, batch_seq_len, training=training)
+    logits, batch_seq_len = DeepSpeech2(batch_x, batch_seq_len, training=mode)
 
     # Compute the CTC loss
     total_loss = tf.nn.ctc_loss(labels=batch_y, inputs=logits, sequence_length=batch_seq_len,
@@ -789,7 +795,7 @@ def create_optimizer(optimizer='adam' , lr=FLAGS.learning_rate):
 # on which all operations within the tower execute.
 # For example, all operations of 'tower 0' could execute on the first GPU `tf.device('/gpu:0')`.
 
-def get_tower_results(model_feeder, optimizer):
+def get_tower_results(model_feeder, optimizer, training):
     r'''
     With this preliminary step out of the way, we can for each GPU introduce a
     tower for which's batch we calculate
@@ -845,7 +851,9 @@ def get_tower_results(model_feeder, optimizer):
                     # Calculate the avg_loss and mean_edit_distance and retrieve the decoded
                     # batch along with the original batch's labels (Y) of this tower
                     total_loss, avg_loss, distance, mean_edit_distance, decoded, labels = \
-                        calculate_mean_edit_distance_and_loss(model_feeder, i, training = (optimizer is None))
+                        calculate_mean_edit_distance_and_loss(model_feeder, i, training=training)
+                        #calculate_mean_edit_distance_and_loss(model_feeder, i, training = (optimizer is None))
+
 
                     # Allow for variables to be re-used by the next tower
                     tf.get_variable_scope().reuse_variables()
@@ -1448,12 +1456,15 @@ class TrainingCoordinator(object):
             std_loss = np.std(self._dev_losses[-FLAGS.earlystop_nsteps:-1])
             # Update the list of losses incurred
             self._dev_losses = self._dev_losses[-FLAGS.earlystop_nsteps:]
-            log_debug('Checking for early stopping (last %d steps) validation loss: %f, with standard deviation: %f and mean: %f' % (FLAGS.earlystop_nsteps, self._dev_losses[-1], std_loss, mean_loss))
+            log_debug('Checking for early stopping (last %d steps) validation loss: %f, with standard deviation: %f and mean: %f'
+                      % (FLAGS.earlystop_nsteps, self._dev_losses[-1], std_loss, mean_loss))
 
             # Check if validation loss has started increasing or is not decreasing substantially, making sure slight fluctuations don't bother the early stopping from working
-            if self._dev_losses[-1] > np.max(self._dev_losses[:-1]) or (abs(self._dev_losses[-1] - mean_loss) < FLAGS.estop_mean_thresh and std_loss < FLAGS.estop_std_thresh):
+            if self._dev_losses[-1] > np.max(self._dev_losses[:-1]) or (abs(self._dev_losses[-1] - mean_loss) < FLAGS.estop_mean_thresh
+                                                                        and std_loss < FLAGS.estop_std_thresh):
                 # Time to early stop
-                log_info('Early stop triggered as (for last %d steps) validation loss: %f with standard deviation: %f and mean: %f' % (FLAGS.earlystop_nsteps, self._dev_losses[-1], std_loss, mean_loss))
+                log_info('Early stop triggered as (for last %d steps) validation loss: %f with standard deviation: %f and mean: %f'
+                         % (FLAGS.earlystop_nsteps, self._dev_losses[-1], std_loss, mean_loss))
                 self._dev_losses = []
                 self._end_training()
                 self._train = False
@@ -1740,7 +1751,7 @@ def train(server=None):
                                                    total_num_replicas=FLAGS.replicas)
 
     # Get the data_set specific graph end-points
-    results_tuple, gradients, mean_edit_distance, loss = get_tower_results(model_feeder, optimizer)
+    results_tuple, gradients, mean_edit_distance, loss = get_tower_results(model_feeder, optimizer, training= True)
 
     # Average tower gradients across GPUs
     avg_tower_gradients = average_gradients(gradients)
@@ -1827,7 +1838,6 @@ def train(server=None):
 
                     # Sets the current data_set for the respective placeholder in feed_dict
                     model_feeder.set_data_set(feed_dict, getattr(model_feeder, job.set_name))
-
                     # Initialize loss aggregator
                     total_loss = 0.0
 
@@ -1846,7 +1856,7 @@ def train(server=None):
                         report_params = []
 
                     # So far the only extra parameter is the feed_dict
-                    extra_params = { 'feed_dict': feed_dict }
+                    extra_params = { 'feed_dict': feed_dict}
 
                     # Loop over the batches
                     for job_step in range(job.steps):
@@ -1918,8 +1928,8 @@ def create_inference_graph(batch_size=None, output_is_logits=False, use_new_deco
     input_tensor = tf.placeholder(tf.float32, [batch_size, None, n_input + 2*n_input*n_context], name='input_node')
     seq_length = tf.placeholder(tf.int32, [batch_size], name='input_lengths')
 
-    # Calculate the logits of the batch using BiRNN
-    logits = DeepSpeech2(input_tensor, tf.to_int64(seq_length) if FLAGS.use_seq_length else None)
+    # TODO : fix training  from bool to tensor
+    logits = DeepSpeech2(input_tensor, tf.to_int64(seq_length) if FLAGS.use_seq_length else None, training=None)
 
     if output_is_logits:
         return logits
