@@ -728,8 +728,6 @@ def calculate_mean_edit_distance_and_loss(model_feeder, tower, training):
     '''
     # Obtain the next batch of data
     batch_x, batch_seq_len, batch_y, mode = model_feeder.next_batch(tower)
-    print(mode)
-    print(type(mode))
 
     # Calculate the logits of the batch using BiRNN
  #   logits, batch_seq_len = DeepSpeech2(batch_x, tf.to_int64(batch_seq_len), dropout)
