@@ -1821,6 +1821,7 @@ def train(server=None):
     # restoring from a checkpoint, saving to a checkpoint, and closing when done
     # or an error occurs.
     try:
+        session_time = 0.0
         with tf.train.MonitoredTrainingSession(master='' if server is None else server.target,
                                                is_chief=is_chief,
                                                hooks=hooks,
@@ -1834,8 +1835,6 @@ def train(server=None):
                     model_feeder.set_data_set(feed_dict, model_feeder.train)
                     step = session.run(global_step, feed_dict=feed_dict)
                     COORD.start_coordination(model_feeder, step)
-
-                session_time = 0.0
 
                 # Get the first job
                 job = COORD.get_job()
@@ -1884,11 +1883,13 @@ def train(server=None):
                         session_time += batch_time
                         # Uncomment the next line for debugging race conditions / distributed TF
                         log_debug('Finished batch step %d %f' %(current_step, batch_loss))
+                        '''
                         if ((current_step % 10) == 0):
                             log_info('time: %s, step: %d, loss: %f lr: %f' %
                                       (format_duration(session_time), current_step, batch_loss, learn_rate)
                                      )
                             session_time = 0.0
+                        '''
 
                         # Add batch to loss
                         total_loss += batch_loss
@@ -1921,6 +1922,8 @@ def train(server=None):
                 if is_chief:
                     send_token_to_ps(session, kill=True)
                 sys.exit(1)
+
+        log_info('SESSION TIME: {}'.format(format_duration(session_time)))
 
         log_debug('Session closed.')
 
