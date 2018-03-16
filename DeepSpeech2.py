@@ -687,7 +687,11 @@ def DeepSpeech2(batch_x, seq_length, training):
     return logits, seq_length
 #================================================================================
 
-if not os.path.exists(os.path.abspath(FLAGS.decoder_library_path)):
+
+if not os.path.exists(os.path.abspath(FLAGS.decoder_library_path)) or \
+  len(FLAGS.decoder_library_path)==0 or \
+  not os.path.exists(os.path.abspath(FLAGS.lm_binary_path)) or \
+  len(FLAGS.lm_binary_path)==0:
     print('INFO: The decoder library file does not exist. ' \
           'Switching to greedy decoder mode.')
     custom_op_module = None
@@ -708,7 +712,7 @@ def decode_with_lm(inputs, sequence_length, beam_width=128,
          in zip(decoded_ixs, decoded_vals, decoded_shapes)],
         log_probabilities)
 
-def decode_without_lm(inputs, sequence_lenght, merge_repeated=True):
+def decode_without_lm(inputs, sequence_length, merge_repeated=True):
     decoded, neg_sum_logits = tf.nn.ctc_greedy_decoder(inputs, sequence_length, merge_repeated)
     return (decoded, neg_sum_logits)
 
@@ -752,7 +756,7 @@ def calculate_mean_edit_distance_and_loss(model_feeder, tower, training):
         decoded, _ = decode_with_lm(logits, batch_seq_len, merge_repeated=False, beam_width=FLAGS.beam_width)
     else:
         # Greedy decoding
-        decoded, _ = decode_without_lm(logits. batch_seq_len, merge_repeated=True)
+        decoded, _ = decode_without_lm(logits, batch_seq_len, merge_repeated=True)
 
     # Compute the edit (Levenshtein) distance
     distance = tf.edit_distance(tf.cast(decoded[0], tf.int32), batch_y)
@@ -1880,7 +1884,7 @@ def train(server=None):
                         session_time += batch_time
                         # Uncomment the next line for debugging race conditions / distributed TF
                         log_debug('Finished batch step %d %f' %(current_step, batch_loss))
-                        if ((current_step % 100) == 0):
+                        if ((current_step % 10) == 0):
                             log_info('time: %s, step: %d, loss: %f lr: %f' %
                                       (format_duration(session_time), current_step, batch_loss, learn_rate)
                                      )
@@ -1941,10 +1945,10 @@ def create_inference_graph(batch_size=None, output_is_logits=False):
 
     if custom_op_module is not None:
         # Beam search decode the batch
-        decoded, _ = decode_with_lm(logits, batch_seq_len, merge_repeated=False, beam_width=FLAGS.beam_width)
+        decoded, _ = decode_with_lm(logits, seq_length, merge_repeated=False, beam_width=FLAGS.beam_width)
     else:
         # Greedy decoding
-        decoded, _ = decode_without_lm(logits. batch_seq_len, merge_repeated=True)
+        decoded, _ = decode_without_lm(logits, seq_length, merge_repeated=True)
 
     decoded = tf.convert_to_tensor(
         [tf.sparse_tensor_to_dense(sparse_tensor) for sparse_tensor in decoded], name='output_node')
