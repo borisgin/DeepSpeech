@@ -28,12 +28,16 @@ class ModelFeeder(object):
                  threads_per_queue=2,
                  input_type='mfcc',
                  reduction_factor=1,
-                 numpad=0
+                 numpad=0,
+                 dummy_seq_len=0,
+                 dummy_num_iters=0
         ):
 
         self.train = train_set
         self.dev = dev_set
         self.test = test_set
+        self.dummy_seq_len = dummy_seq_len
+        self.dummy_num_iters = dummy_num_iters
         self.mode = 0
         self.sets = [train_set, dev_set, test_set]
         self.numcep = numcep
@@ -96,29 +100,34 @@ class DataSet(object):
     Takes a set of CSV files produced by importers in /bin.
     '''
     def __init__(self, csvs, batch_size, skip=0, limit=0, ascending=False, next_index=lambda i: i + 1, shuffle=True,
-                 augmentation=None):
+                 augmentation=None, dummy_seq_len=0, dummy_num_iters=0):
         self.batch_size = batch_size
         self.next_index = next_index
-        self.files = None
+        self.dummy_seq_len = dummy_seq_len
+        self.dummy_num_iters = dummy_num_iters
         self.shuffle = shuffle
-        self.augmentation = augmentation
-        for csv in csvs:
-            file = pandas.read_csv(csv, encoding='utf-8')
-            if self.files is None:
-                self.files = file
-            else:
-                self.files = self.files.append(file)
-        if ascending:
-            self.files = self.files.sort_values(by="wav_filesize", ascending=ascending) \
+        if dummy_num_iters == 0:
+            self.files = None
+            self.augmentation = augmentation
+            for csv in csvs:
+                file = pandas.read_csv(csv, encoding='utf-8')
+                if self.files is None:
+                    self.files = file
+                else:
+                    self.files = self.files.append(file)
+            if ascending:
+                self.files = self.files.sort_values(by="wav_filesize", ascending=ascending) \
                          .loc[:, ["wav_filename", "transcript"]] \
                          .values[skip:]
+            else:
+                self.files = self.files.loc[:, ["wav_filename", "transcript"]] \
+                             .values[skip:]
+            if limit > 0:
+                self.files = self.files[:limit]
+            if shuffle:
+                self.files = np.random.permutation(self.files)
         else:
-            self.files = self.files.loc[:, ["wav_filename", "transcript"]] \
-                         .values[skip:]
-        if limit > 0:
-            self.files = self.files[:limit]
-        if shuffle:
-            self.files = np.random.permutation(self.files)
+            self.files = np.array(['dummy'] * (dummy_num_iters * batch_size))
         self.total_batches = int(ceil(len(self.files) / batch_size))
 
 class _DataSetLoader(object):
@@ -171,44 +180,50 @@ class _DataSetLoader(object):
                 if self._data_set.shuffle:
                     self._data_set.files = np.random.permutation(self._data_set.files)
                 index = 0
-            wav_file, transcript = self._data_set.files[index]
-            target = text_to_char_array(transcript, self._alphabet)
-            target_len = len(target)
+            if self._data_set.dummy_seq_len == 0:
+                wav_file, transcript = self._data_set.files[index]
+                target = text_to_char_array(transcript, self._alphabet)
+                target_len = len(target)
 
-            source = audiofile_to_input_vector(wav_file, self._model_feeder.numcep, self._model_feeder.numcontext,
-                                               self._model_feeder.input_type,
-                                               augmentation=self._data_set.augmentation)
+                source = audiofile_to_input_vector(wav_file, self._model_feeder.numcep, self._model_feeder.numcontext,
+                                                   self._model_feeder.input_type,
+                                                   augmentation=self._data_set.augmentation)
 
-            source_len = len(source)
+                source_len = len(source)
 
-            # TODO: move fix ctc
-            min_len = target_len * self._model_feeder.reduction_factor
-            if source_len < min_len:
-                numpad = (min_len - source_len) // 2
-                print('char_len={} audio_len={} pad={}'.format(target_len, len(source), numpad))
-                num_features=self._model_feeder.numcep
-                pad_shape=[numpad, num_features]
+                # TODO: move fix ctc
+                min_len = target_len * self._model_feeder.reduction_factor
+                if source_len < min_len:
+                    numpad = (min_len - source_len) // 2
+                    print('char_len={} audio_len={} pad={}'.format(target_len, len(source), numpad))
+                    num_features=self._model_feeder.numcep
+                    pad_shape=[numpad, num_features]
+                    start_pad = np.broadcast_to(source[0, :], pad_shape)
+                    end_pad   = np.broadcast_to(source[-1,:], pad_shape)
+                    source = np.concatenate((start_pad, source, end_pad))
+                    # pad = np.zeros([numpad, self._model_feeder.numcep])
+                    # source = np.concatenate((pad, source, pad))
+
+                #--------------------------------------------------
+
+                num_features = self._model_feeder.numcep
+                numpad= self._model_feeder.numpad
+                pad_shape = [numpad, num_features]
                 start_pad = np.broadcast_to(source[0, :], pad_shape)
-                end_pad   = np.broadcast_to(source[-1,:], pad_shape)
+                end_pad = np.broadcast_to(source[-1, :], pad_shape)
                 source = np.concatenate((start_pad, source, end_pad))
-                # pad = np.zeros([numpad, self._model_feeder.numcep])
-                # source = np.concatenate((pad, source, pad))
 
-            #--------------------------------------------------
+                #if source_len // self._model_feeder.reduction_factor < target_len:
+                #    print("audio {}, chars {}".format(source.shape, target_len))
+                #    raise ValueError('Error: Audio file {} is too short for transcription.'.format(wav_file))
 
-            num_features = self._model_feeder.numcep
-            numpad= self._model_feeder.numpad
-            pad_shape = [numpad, num_features]
-            start_pad = np.broadcast_to(source[0, :], pad_shape)
-            end_pad = np.broadcast_to(source[-1, :], pad_shape)
-            source = np.concatenate((start_pad, source, end_pad))
-
-            #if source_len // self._model_feeder.reduction_factor < target_len:
-            #    print("audio {}, chars {}".format(source.shape, target_len))
-            #    raise ValueError('Error: Audio file {} is too short for transcription.'.format(wav_file))
-
-            #print(source.shape, len(source))
-
+                #print(source.shape, len(source))
+            else:
+                source_len = self._data_set.dummy_seq_len
+                source = np.random.randn(source_len, self._model_feeder.numcep).astype(np.float32)
+                target_len = int(self._data_set.dummy_seq_len/4)
+                target = np.ones(shape=target_len)
+               
             try:
                 session.run(self._enqueue_op, feed_dict={ self._model_feeder.ph_x: source,
                                                           self._model_feeder.ph_x_length: len(source),

@@ -40,6 +40,9 @@ tf.app.flags.DEFINE_string  ('test_files',       '',          'comma separated l
 tf.app.flags.DEFINE_boolean ('fulltrace',        False,       'if full trace debug info should be generated during training')
 tf.app.flags.DEFINE_boolean ('train_sort',       False,       'sort training set by wave length')
 
+tf.app.flags.DEFINE_integer ('perf_seq_len',    0,           'length of dummy sequence for performance tests; if it is non-zero, dummy data will be feeded')
+tf.app.flags.DEFINE_integer ('perf_num_iters',  0,           'number of perf dummy data iterations')
+
 
 # Cluster configuration
 # =====================
@@ -1712,7 +1715,9 @@ def train(server=None):
                         ascending=FLAGS.train_sort,
                         next_index=lambda i: COORD.get_next_index('train'),
                         shuffle=True,
-                        augmentation=augmentation_parameters if FLAGS.augment else None)
+                        augmentation=augmentation_parameters if FLAGS.augment else None,
+                        dummy_seq_len=FLAGS.perf_seq_len,
+                        dummy_num_iters=FLAGS.perf_num_iters)
 
     # Reading validation set
     dev_set = DataSet(FLAGS.dev_files.split(','),
@@ -1720,7 +1725,9 @@ def train(server=None):
                       limit=FLAGS.limit_dev,
                       next_index=lambda i: COORD.get_next_index('dev'),
                       shuffle=False,
-                      augmentation=None)
+                      augmentation=None,
+                      dummy_seq_len=FLAGS.perf_seq_len,
+                      dummy_num_iters=FLAGS.perf_num_iters)
 
     # Reading test set
     test_set = DataSet(FLAGS.test_files.split(','),
@@ -1728,7 +1735,9 @@ def train(server=None):
                        limit=FLAGS.limit_test,
                        next_index=lambda i: COORD.get_next_index('test'),
                        shuffle=False,
-                       augmentation=None)
+                       augmentation=None,
+                       dummy_seq_len=FLAGS.perf_seq_len,
+                       dummy_num_iters=FLAGS.perf_num_iters)
 
     # Combining all sets to a multi set model feeder
     model_feeder = ModelFeeder(train_set,
@@ -1740,8 +1749,10 @@ def train(server=None):
                                tower_feeder_count=len(available_devices),
                                input_type=input_type,
                                reduction_factor=reduction_factor,
-                               numpad=n_pad
-)
+                               numpad=n_pad,
+                               dummy_seq_len=FLAGS.perf_seq_len,
+                               dummy_num_iters=FLAGS.perf_num_iters)
+
 
     if (FLAGS.decay_steps > 0) and (FLAGS.decay_rate > 0):
         lr = tf.train.exponential_decay(learning_rate = FLAGS.learning_rate,
