@@ -43,7 +43,7 @@ tf.app.flags.DEFINE_boolean ('train_sort',       False,       'sort training set
 
 # Cluster configuration
 # =====================
-
+tf.app.flags.DEFINE_string  ('device',         'gpu ',        'cpu or gpu')
 tf.app.flags.DEFINE_string  ('ps_hosts',         '',          'parameter servers - comma separated list of hostname:port pairs')
 tf.app.flags.DEFINE_string  ('worker_hosts',     '',          'workers - comma separated list of hostname:port pairs')
 tf.app.flags.DEFINE_string  ('job_name',         'localhost', 'job name - one of localhost (default), worker, ps')
@@ -224,14 +224,16 @@ def initialize_globals():
 
     # This node's available GPU devices
     global available_devices
-    available_devices = [worker_device + gpu for gpu in get_available_gpus()]
-    num_gpus=len(available_devices)
-    print("Found %d GPUs" % num_gpus)
-
-    global available_cpus
-    available_cpus=get_available_cpus()
-    num_cpus = len(available_cpus)
-    print("Found %d CPUs" % num_cpus)
+    if (FLAGS.device=='gpu'):
+        available_devices = [worker_device + gpu for gpu in get_available_gpus()]
+        num_gpus = len(available_devices)
+        print("Found %d GPUs" % num_gpus)
+    else:
+        available_devices =[]
+        num_gpus=0
+        available_cpus=get_available_cpus()
+        num_cpus = len(available_cpus)
+        print("Found %d CPUs" % num_cpus)
 
     # If there is no GPU available, we fall back to CPU based operation
     if 0 == len(available_devices):
@@ -1883,6 +1885,7 @@ def train(server=None):
                         session_time += batch_time
                         # Uncomment the next line for debugging race conditions / distributed TF
                         log_debug('Finished batch step %d %f' %(current_step, batch_loss))
+
                         '''
                         if ((current_step % 10) == 0):
                             log_info('time: %s, step: %d, loss: %f lr: %f' %
