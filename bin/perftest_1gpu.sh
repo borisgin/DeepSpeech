@@ -2,8 +2,8 @@
 export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:/usr/local/cuda-9.0/extras/CUPTI/lib64/:/usr/local/cuda-9.0/lib64/:$LD_LIBRARY_PATH
 
 
-export EXPERIMENT="TMP"
-export LOG_DIR${EXPERIMENT}
+export EXPERIMENT=./REPORT
+export LOG_DIR=${EXPERIMENT}
 export CHECKPOINT_DIR=${LOG_DIR}/checkpoints
 
 
@@ -11,16 +11,14 @@ export CHECKPOINT_DIR=${LOG_DIR}/checkpoints
 if [ ! -d "$LOG_DIR" ]; then
   mkdir  ${LOG_DIR}
 fi
+rm -rf $CHECKPOINT_DIR
 if [ ! -d "$CHECKPOINT_DIR" ]; then
   mkdir  ${CHECKPOINT_DIR}
 fi
-if [ ! -d "$SUMMARY_DIR" ]; then
-  mkdir  ${SUMMARY_DIR}
-fi
 
-export CUDA_VISIBLE_DEVICE=0,1,2,3,4,5,6,7
+export CUDA_VISIBLE_DEVICES=0
 
-LOG_FILE=${LOG_DIR}/PERFTEST_${EXPERIMENT}_8GPU_$(date +%Y%m%d_%H%M).txt
+LOG_FILE=${LOG_DIR}/PERFTEST_1GPU_$(date +%Y%m%d_%H%M).txt
 
 echo Logging the experiment to $LOG_FILE
 
@@ -36,6 +34,7 @@ CONFIG="\
   --n_hidden ${HIDDEN_SIZE} \
   --train_batch_size ${BATCH_SIZE} \
   --dev_batch_size ${BATCH_SIZE} \
+  --test_batch_size ${BATCH_SIZE} \
   --train 0 \
   --learning_rate 0 \
   --display_step 1 \
@@ -51,7 +50,6 @@ echo CONFIG: | tee -a $LOG_FILE
 echo $CONFIG | tee -a $LOG_FILE
 
 time python -u DeepSpeech2.py $CONFIG \
-  --test_batch_size $BATCH_SIZE \
   --wer_log_pattern "GLOBAL LOG: logwer('${COMPUTE_ID}', '%s', '%s', %f)" \
   --decoder_library_path GREEDY_DECODER \
   "$@" 2>&1 | tee -a $LOG_FILE

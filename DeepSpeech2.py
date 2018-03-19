@@ -1821,6 +1821,7 @@ def train(server=None):
         hooks.append(optimizer.make_session_run_hook(is_chief))
 
     # Hook to save TensorBoard summaries
+    '''
     if (FLAGS.summary_secs is not None) or (FLAGS.summary_steps is not None):
         hooks.append(tf.train.SummarySaverHook(save_secs=FLAGS.summary_secs, save_steps=FLAGS.summary_steps,
                                            output_dir=FLAGS.summary_dir, summary_op=merge_all_summaries_op))
@@ -1829,17 +1830,18 @@ def train(server=None):
     if FLAGS.train and FLAGS.max_to_keep > 0:
         saver = tf.train.Saver(max_to_keep=FLAGS.max_to_keep)
         hooks.append(tf.train.CheckpointSaverHook(checkpoint_dir=FLAGS.checkpoint_dir, save_secs=FLAGS.checkpoint_secs, saver=saver))
-
+    '''
     # The MonitoredTrainingSession takes care of session initialization,
     # restoring from a checkpoint, saving to a checkpoint, and closing when done
     # or an error occurs.
     try:
         session_time = 0.0
+        iters = 0
         with tf.train.MonitoredTrainingSession(master='' if server is None else server.target,
                                                is_chief=is_chief,
                                                hooks=hooks,
                                                checkpoint_dir=FLAGS.checkpoint_dir,
-                                               save_checkpoint_secs=FLAGS.checkpoint_secs if FLAGS.train else None,
+                                               save_checkpoint_secs=None,
                                                config=session_config) as session:
             try:
                 if is_chief:
@@ -1894,6 +1896,7 @@ def train(server=None):
 
                         batch_time = time.time() - batch_time
                         session_time += batch_time
+                        iters = iters + 1
                         # Uncomment the next line for debugging race conditions / distributed TF
                         log_debug('Finished batch step %d %f' %(current_step, batch_loss))
 
@@ -1937,7 +1940,7 @@ def train(server=None):
                     send_token_to_ps(session, kill=True)
                 sys.exit(1)
 
-        log_info('SESSION TIME: {}'.format(format_duration(session_time)))
+        log_info('SESSION TIME: {}, number of steps: {}'.format(format_duration(session_time), iters))
 
         log_debug('Session closed.')
 
