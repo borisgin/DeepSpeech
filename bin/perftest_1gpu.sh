@@ -35,7 +35,8 @@ CONFIG="\
   --train_batch_size ${BATCH_SIZE} \
   --dev_batch_size ${BATCH_SIZE} \
   --test_batch_size ${BATCH_SIZE} \
-  --train 0 \
+  --train=False \
+  --epoch 0 \
   --learning_rate 0 \
   --display_step 1 \
   --validation_step 1 \
